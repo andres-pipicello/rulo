@@ -9,8 +9,16 @@ It shows and calculates the best routes to move money between different cryptocu
 - [Glossary](GLOSSARY.md)
 - [Domain model (draft)](docs/domain-model.md)
 - [Decisions](docs/adr/)
-- [Tech](docs/tech.md)
 
 # Development
 
-Not scaffolded yet.
+Requires [mise](https://mise.jdx.dev).
+
+```sh
+mise install          # node, pnpm, lefthook
+mise run install      # dependencies
+lefthook install      # pre-commit hook: mise run check
+mise run dev          # http://localhost:5173
+```
+
+Other tasks: `mise tasks`.
