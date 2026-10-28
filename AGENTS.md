@@ -1,41 +1,15 @@
-# AI Agent Usage Guidelines
+# rulo
 
-## Commit Workflow
+SPA that finds the best routes to move money between platforms and currencies.
 
-- Make all modifications cohesively within a single task before committing
-- Don't leave partial changes, commit after a cohesive set of changes
-- Always commit with the agent as co-author
-- **Do NOT push after every commit** - only push when explicitly requested or when necessary (e.g., creating PR, completing work)
-- Always build/test the code before committing to ensure no errors are introduced (doc-only changes do not require running tests again)
+## Where things are
 
-## Project rules
-- No `any`
-- All API data must be validated with Zod
-- Prefer TanStack Query over manual fetch
-- No direct `fetch` outside `api/`
-- Tests are required for new API clients
+- Spec (use cases, features): [docs/spec.md](docs/spec.md)
+- Domain model, draft under review: [docs/domain-model.md](docs/domain-model.md). Read before naming or modelling domain concepts.
+- Tech stack and agreed changes: [docs/tech.md](docs/tech.md)
+- Coding standards, applied when reviewing: [CODING_STANDARDS.md](CODING_STANDARDS.md)
+- Tasks: GitHub issues. `TODO.md` is a legacy list awaiting review; leave it as is.
 
-# AI Agent errors
-Whenever the AI Agent makes an error, log it in [MISTAKES.md](MISTAKES.md). Periodically, entries should be distilled into directives in the correct section of this file and then removed from MISTAKES.md.
+## Workflow
 
-# Tasks
-Tasks are tracked in [TODO.md](TODO.md).
-
-## Task file format
-- Tasks are markdown checkboxes: `- [ ]` (pending) / `- [x]` (done)
-- Headings (`##`, `###`) group tasks by area or theme. Chores can be grouped under a shared heading.
-- Nesting is allowed: sub-checkboxes are subtasks of their parent
-- Plain bullets (no checkbox) under a task are context or clarifications, not tasks
-- Numbered lists indicate ordered steps where sequence matters
-
-## Task workflow
-- For each task, create a new branch and a corresponding git worktree
-- Before executing a task, generate a plan that includes:
-  - Whether the task is appropriate given the current state of the repository
-  - Whether the proposed solution is feasible
-- Present the plan to the user for approval before proceeding
-- Once a task is finished, check it off (`- [x]`)
-
-# Project Configuration
-## Initialize project
-- Set up the TypeScript project for the SPA `rulo`
+- Work each task on its own branch and git worktree.
