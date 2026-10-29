@@ -111,5 +111,5 @@ The static description of Platforms, Currencies, Connections and their Endpoints
 _Avoid_: seed, config, registry
 
 **Market Data**:
-The time-varying Exchange Rates and Fees, kept apart from the Catalog and looked up only when a Quote is made.
+The time-varying Exchange Rates and Fees, kept apart from the Catalog; per Platform, either fixed in the seed or fetched.
 _Avoid_: prices, live data, feeds

@@ -57,14 +57,16 @@ A Hop from Stop A to Stop B (A ≠ B) exists:
 - **within an Account**: same Platform, an Exchange Pair `A.currency → B.currency`, and not two held Stops of different Accounts.
 
 ## Routes
-An ordered sequence of Hops from the starting to the destination Stop, within the Search Universe. Finding Routes needs no Market Data.
+An ordered sequence of Hops from the starting to the destination Stop, within the Search Universe.
 
 ## Quotes (evaluation)
-A Quote fixes one side and computes the other:
-- **Fixed Sent Amount**: run the Route forward. Best Quote = highest Delivered Amount. The Sent Amount is not capped by the starting Balance; the UI may warn instead.
-- **Fixed Delivered Amount**: the smallest Sent Amount whose forward run delivers at least the target. Every Leg is monotonic in its Amount, so this is a search over the forward run. Best Quote = lowest Sent Amount.
+A Quote fixes one side and the search finds the best Route for it:
+- **Fixed Sent Amount**: the Route with the highest Delivered Amount. The Sent Amount is not capped by the starting Balance; the UI may warn instead.
+- **Fixed Delivered Amount**: the Route needing the lowest Sent Amount that still delivers at least the target.
 - Ties: fewer Hops, since fewer Platforms means less that can go wrong.
-- Only the best Quote is returned.
+- Only the best Quote is returned. It records the oldest fetch time among the values it used.
+
+The search explores Hops and evaluates them together, asking for Market Data as it goes; a Hop with an unknown value is skipped. Every Leg is monotonic in its Amount (more in never means less out), so the search keeps only the best Amount per Stop. Because rounding and Fees always lose value, revisiting a Stop never pays off, unless Exchange Rates contradict each other across Platforms; such a Quote is flagged as repeating a Stop.
 
 ### Evaluating a Leg
 Each Leg records the Amount in, the Fees charged, the Exchange Rates applied and the Amount out. A Leg may apply two Conversions (one at each Endpoint).
@@ -79,22 +81,24 @@ Within an Account: one Conversion at the Platform's Exchange Rate. Exchange Pair
 
 # Market Data
 
-Time-varying, kept apart from the Catalog ([ADR 0003](adr/0003-market-data-separate-from-catalog.md)).
+Kept apart from the Catalog ([ADR 0003](adr/0003-market-data-separate-from-catalog.md)). Each Platform declares its Fees and its Exchange Rates as fixed (listed in the seed) or dynamic (fetched from a named origin, unknown until then).
 
 ## Exchange Rate
-- `platform`, `source`, `target`, `rate` (exact rational, major target per major source), `asOf`
+- `platform`, `source`, `target`, `rate` (exact rational, major target per major source), provenance
 - Conversion: `floor(x × rate × target.scale / source.scale)`
-- Used by Exchange Pairs and by Endpoints that convert.
+- Needed by Exchange Pairs and by Endpoints that convert.
 
 ## Fee
 - On one Endpoint of a Platform Currency
-- `fixed` (Minor units of the charged Currency, ≥ 0) and `proportional` (exact fraction, 0 ≤ p < 1)
+- `fixed` (Minor units of the charged Currency, ≥ 0) and `proportional` (exact fraction, 0 ≤ p < 1), provenance
 - Charged on `x`: `x − fixed − ceil(x × proportional)`; a result ≤ 0 makes the Leg impossible for that Amount.
-- Completeness and missing data: see ADR 0003.
+
+## Provenance
+- `fixed`, or `fetched` with its origin and fetch time. For debugging and for showing how recent a Quote's data is; values never expire.
 
 # Seed data
 
-The Catalog and illustrative Market Data live as YAML in `src/data/`; Zod schemas parse them at load. Entries marked `# assumed` need checking against the real Platform. Market Data values are illustrative, not real.
+The Catalog (including each Platform's fixed/dynamic declarations) and the fixed Market Data values live as YAML in `src/data/`; Zod schemas parse them at load. Entries marked `# assumed` need checking against the real Platform. Exchange Rates are dynamic everywhere for now; tests supply the rates their scenarios need.
 
 # Out of scope for now
 - Transfer limits and durations

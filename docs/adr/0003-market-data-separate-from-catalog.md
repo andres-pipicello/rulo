@@ -1,10 +1,7 @@
 # Market Data is kept separate from the Catalog
 
-Exchange Rates and Fees change asynchronously and come from different sources than the Catalog, so they live in a separate Market Data input passed in when Quotes are made, not as properties of Platforms. The Catalog alone determines which Hops and Routes exist; Market Data only decides what a Quote delivers.
+Exchange Rates and Fees change asynchronously and come from different sources than the Catalog, so they live apart from it and are looked up while a Quote is searched, not stored as properties of Platforms. The Catalog determines which Hops exist; Market Data decides what they deliver.
 
-Missing Market Data is never assumed free, and is handled in two layers:
+Each Platform declares, in the Catalog, whether its Fees and whether its Exchange Rates are **fixed** (values listed in the seed) or **dynamic** (fetched from a named origin). There are no layers: a value is one or the other. A check fails the build when a fixed Platform lacks a value one of its Endpoints or Exchange Pairs needs; a free Endpoint is an explicit zero Fee.
 
-- **Curated seed data** must be complete: a check fails the build when any Endpoint lacks a Fee entry. A free Endpoint is recorded with an explicit zero Fee, and an Endpoint whose Fees nobody has researched does not belong in the Catalog yet.
-- **At runtime**, for any Market Data source, a Hop missing an Exchange Rate or Fee it needs cannot be quoted.
-
-A negative Fee is invalid: rejected when seeded, ignored when it comes from external data.
+A dynamic value is unknown until first fetched. Values do not expire; each keeps its provenance (fixed, or fetched with origin and time) for debugging. A Hop is considered only when every value it needs is known, so an unknown value is never assumed free. A negative Fee is invalid: rejected when seeded, ignored when fetched.
