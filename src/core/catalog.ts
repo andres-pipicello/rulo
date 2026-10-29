@@ -14,23 +14,9 @@ export const ConnectionId = z
   .brand<"ConnectionId">();
 export type ConnectionId = z.infer<typeof ConnectionId>;
 
-export const Connection = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("rail"),
-      id: ConnectionId,
-      currencies: z.array(CurrencyCode).readonly(),
-    })
-    .readonly(),
-  z
-    .object({
-      kind: z.literal("native"),
-      id: ConnectionId,
-      platform: PlatformId,
-      currencies: z.array(CurrencyCode).readonly(),
-    })
-    .readonly(),
-]);
+export const Connection = z
+  .object({ id: ConnectionId, currencies: z.array(CurrencyCode).readonly() })
+  .readonly();
 export type Connection = z.infer<typeof Connection>;
 
 /** An Inpoint or Outpoint: a Connection and the Currency travelling over it. */
@@ -40,20 +26,21 @@ export type Endpoint = z.infer<typeof Endpoint>;
 export const ExchangePair = z.object({ source: CurrencyCode, target: CurrencyCode }).readonly();
 export type ExchangePair = z.infer<typeof ExchangePair>;
 
-export const HeldCurrency = z
+/** A Platform Currency as the Catalog describes it: its Inpoints and Outpoints. */
+export const OfferedCurrency = z
   .object({
     currency: CurrencyCode,
     inpoints: z.array(Endpoint).readonly(),
     outpoints: z.array(Endpoint).readonly(),
   })
   .readonly();
-export type HeldCurrency = z.infer<typeof HeldCurrency>;
+export type OfferedCurrency = z.infer<typeof OfferedCurrency>;
 
 export const Platform = z
   .object({
     id: PlatformId,
     name: z.string().min(1),
-    currencies: z.array(HeldCurrency).readonly(),
+    currencies: z.array(OfferedCurrency).readonly(),
     exchangePairs: z.array(ExchangePair).readonly(),
   })
   .readonly();
@@ -61,10 +48,6 @@ export type Platform = z.infer<typeof Platform>;
 
 /** A Currency as held on a specific Platform. */
 export type PlatformCurrency = Readonly<{ platform: PlatformId; currency: CurrencyCode }>;
-
-export const PlatformCurrency = {
-  key: (pc: PlatformCurrency): string => `${pc.platform}:${pc.currency}`,
-};
 
 function duplicates(values: readonly string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) !== index);
@@ -83,7 +66,6 @@ const schema = z
     };
     const currencies = new Set<string>(catalog.currencies.map((c) => c.symbol));
     const connections = new Map<string, Connection>(catalog.connections.map((c) => [c.id, c]));
-    const platforms = new Set<string>(catalog.platforms.map((p) => p.id));
 
     for (const d of duplicates(catalog.currencies.map((c) => c.symbol))) {
       issue(`Duplicate currency ${d}`);
@@ -99,9 +81,6 @@ const schema = z
       for (const currency of connection.currencies) {
         if (!currencies.has(currency))
           issue(`Connection ${connection.id}: unknown currency ${currency}`);
-      }
-      if (connection.kind === "native" && !platforms.has(connection.platform)) {
-        issue(`Connection ${connection.id}: unknown platform ${connection.platform}`);
       }
     }
 
@@ -139,10 +118,24 @@ function currency(catalog: Catalog, code: CurrencyCode): Currency {
   return found;
 }
 
-function holds(catalog: Catalog, pc: PlatformCurrency): boolean {
-  return catalog.platforms.some(
-    (p) => p.id === pc.platform && p.currencies.some((h) => h.currency === pc.currency),
+function platform(catalog: Catalog, id: PlatformId): Platform {
+  const found = catalog.platforms.find((p) => p.id === id);
+  if (!found) throw new Error(`Platform ${id} is not in the catalog`);
+  return found;
+}
+
+/** The Catalog entry for a Platform Currency, if the Platform offers that Currency. */
+function offered(catalog: Catalog, pc: PlatformCurrency): OfferedCurrency | undefined {
+  return catalog.platforms
+    .find((p) => p.id === pc.platform)
+    ?.currencies.find((c) => c.currency === pc.currency);
+}
+
+/** Every Platform Currency the Catalog offers. */
+function platformCurrencies(catalog: Catalog): readonly PlatformCurrency[] {
+  return catalog.platforms.flatMap((p) =>
+    p.currencies.map((c) => ({ platform: p.id, currency: c.currency })),
   );
 }
 
-export const Catalog = { schema, currency, holds };
+export const Catalog = { schema, currency, platform, offered, platformCurrencies };
