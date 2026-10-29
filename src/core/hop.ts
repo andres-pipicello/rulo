@@ -10,10 +10,11 @@ import { Result } from "./result";
 import type { SearchUniverse } from "./stop";
 import { Stop } from "./stop";
 
-/** A direct way from one Stop to another, as the Catalog allows. */
-export type Hop =
-  | Readonly<{ kind: "transfer"; from: Stop; to: Stop; via: Endpoint }>
-  | Readonly<{ kind: "exchange"; from: Stop; to: Stop }>;
+/**
+ * A direct move from one Stop to another, as the Catalog allows: through a Connection
+ * (`via` is the matched Outpoint/Inpoint Endpoint) or within an Account (`via` is null).
+ */
+export type Hop = Readonly<{ from: Stop; to: Stop; via: Endpoint | null }>;
 
 /** A Hop taken with a specific Amount. */
 export type Leg = Readonly<{
@@ -36,7 +37,7 @@ export type Unquotable =
 
 export type Context = Readonly<{ catalog: Catalog; market: MarketData }>;
 
-/** Transfers between any two Stops, Exchanges within one Account, restricted to the Search Universe. */
+/** Hops through a Connection between any two Stops, or within one Account, inside the Search Universe. */
 function derive(catalog: Catalog, universe: SearchUniverse): readonly Hop[] {
   const hops: Hop[] = [];
   for (const from of universe) {
@@ -48,17 +49,17 @@ function derive(catalog: Catalog, universe: SearchUniverse): readonly Hop[] {
         const accepts = Catalog.offered(catalog, to)?.inpoints.some(
           (i) => i.connection === via.connection && i.currency === via.currency,
         );
-        if (accepts) hops.push({ kind: "transfer", from, to, via });
+        if (accepts) hops.push({ from, to, via });
       }
       const differentAccounts =
         from.kind === "held" && to.kind === "held" && from.account !== to.account;
-      const exchangeable =
+      const withinAccount =
         from.platform === to.platform &&
         !differentAccounts &&
         Catalog.platform(catalog, from.platform).exchangePairs.some(
           (p) => p.source === from.currency && p.target === to.currency,
         );
-      if (exchangeable) hops.push({ kind: "exchange", from, to });
+      if (withinAccount) hops.push({ from, to, via: null });
     }
   }
   return hops;
@@ -69,32 +70,27 @@ type Step =
   | Readonly<{ kind: "convert"; platform: PlatformId; source: CurrencyCode; target: CurrencyCode }>;
 
 /** What taking a Hop does to an Amount, in order (see docs/domain-model.md, "Evaluating a Leg"). */
-function steps(hop: Hop): readonly Step[] {
-  const { from, to } = hop;
-  switch (hop.kind) {
-    case "transfer": {
-      const { via } = hop;
-      const all: Step[] = [
-        {
-          kind: "fee",
-          platform: from.platform,
-          on: { kind: "outpoint", currency: from.currency, endpoint: via },
-        },
-        { kind: "convert", platform: from.platform, source: from.currency, target: via.currency },
-        {
-          kind: "fee",
-          platform: to.platform,
-          on: { kind: "inpoint", currency: to.currency, endpoint: via },
-        },
-        { kind: "convert", platform: to.platform, source: via.currency, target: to.currency },
-      ];
-      return all.filter((s) => s.kind === "fee" || s.source !== s.target);
-    }
-    case "exchange":
-      return [
-        { kind: "convert", platform: from.platform, source: from.currency, target: to.currency },
-      ];
+function steps({ from, to, via }: Hop): readonly Step[] {
+  if (!via) {
+    return [
+      { kind: "convert", platform: from.platform, source: from.currency, target: to.currency },
+    ];
   }
+  const all: Step[] = [
+    {
+      kind: "fee",
+      platform: from.platform,
+      on: { kind: "outpoint", currency: from.currency, endpoint: via },
+    },
+    { kind: "convert", platform: from.platform, source: from.currency, target: via.currency },
+    {
+      kind: "fee",
+      platform: to.platform,
+      on: { kind: "inpoint", currency: to.currency, endpoint: via },
+    },
+    { kind: "convert", platform: to.platform, source: via.currency, target: to.currency },
+  ];
+  return all.filter((s) => s.kind === "fee" || s.source !== s.target);
 }
 
 /** The Market Data a Hop needs that is missing, independent of any Amount. */
