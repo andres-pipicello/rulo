@@ -2,7 +2,8 @@ import { Temporal } from "temporal-polyfill";
 import { z } from "zod";
 
 import { MinorUnits } from "./amount";
-import { Endpoint, ExchangePair, PlatformId } from "./catalog";
+import type { Catalog } from "./catalog";
+import { Endpoint, PlatformId } from "./catalog";
 import { CurrencyCode } from "./currency";
 import { Rational } from "./rational";
 
@@ -20,11 +21,10 @@ export const ExchangeRate = z
   .readonly();
 export type ExchangeRate = z.infer<typeof ExchangeRate>;
 
-/** What a Fee is charged on. `currency` is the Platform Currency the endpoint belongs to. */
+/** The Outpoint or Inpoint a Fee is charged on. `currency` is the Platform Currency it belongs to. */
 export const FeeTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("outpoint"), currency: CurrencyCode, endpoint: Endpoint }).readonly(),
   z.object({ kind: z.literal("inpoint"), currency: CurrencyCode, endpoint: Endpoint }).readonly(),
-  z.object({ kind: z.literal("exchange"), pair: ExchangePair }).readonly(),
 ]);
 export type FeeTarget = z.infer<typeof FeeTarget>;
 
@@ -33,22 +33,15 @@ export const Fee = z
     platform: PlatformId,
     on: FeeTarget,
     /** Minor units of the Currency being charged. */
-    fixed: MinorUnits,
-    proportional: Rational.schema,
+    fixed: MinorUnits.refine((minor) => minor >= 0n, "Fixed fee must not be negative"),
+    /** Below 1, so a larger Amount never delivers less. */
+    proportional: Rational.schema.refine((r) => r.num < r.den, "Proportional fee must be below 1"),
   })
   .readonly();
 export type Fee = z.infer<typeof Fee>;
 
 function targetKey(platform: PlatformId, on: FeeTarget): string {
-  switch (on.kind) {
-    case "outpoint":
-    case "inpoint":
-      return [platform, on.kind, on.currency, on.endpoint.connection, on.endpoint.currency].join(
-        "|",
-      );
-    case "exchange":
-      return [platform, on.kind, on.pair.source, on.pair.target].join("|");
-  }
+  return [platform, on.kind, on.currency, on.endpoint.connection, on.endpoint.currency].join("|");
 }
 
 const schema = z
@@ -89,4 +82,21 @@ function fee(market: MarketData, platform: PlatformId, on: FeeTarget): Fee | und
   return market.fees.find((f) => targetKey(f.platform, f.on) === key);
 }
 
-export const MarketData = { schema, rate, fee };
+/** Every Outpoint and Inpoint in the Catalog without a Fee entry. Should always be empty. */
+function missingFees(
+  catalog: Catalog,
+  market: MarketData,
+): readonly Readonly<{ platform: PlatformId; on: FeeTarget }>[] {
+  return catalog.platforms.flatMap((platform) =>
+    platform.currencies.flatMap(({ currency, inpoints, outpoints }) =>
+      [
+        ...outpoints.map((endpoint) => ({ kind: "outpoint" as const, currency, endpoint })),
+        ...inpoints.map((endpoint) => ({ kind: "inpoint" as const, currency, endpoint })),
+      ]
+        .filter((on) => !fee(market, platform.id, on))
+        .map((on) => ({ platform: platform.id, on })),
+    ),
+  );
+}
+
+export const MarketData = { schema, rate, fee, missingFees };
