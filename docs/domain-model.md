@@ -5,8 +5,8 @@
 Static description of what exists, loaded from seed data.
 
 ## Currency
-- `symbol`: unique code (`USD`, `ARS`, `USDT`, `BTC`)
-- `decimals`: number of decimal places of the Minor unit (USD 2, ARS 2, USDT 6, BTC 8)
+- `symbol`: unique code (`USD`, `ARS`, `USDT`, `USDC`, `BTC`)
+- `decimals`: number of decimal places of the Minor unit (USD 2, ARS 2, USDT 6, USDC 6, BTC 8)
 - Derived: `scale = 10 ^ decimals`
 
 ## Connection
@@ -17,10 +17,15 @@ Static description of what exists, loaded from seed data.
 ## Platform
 - `id`, `name`
 - `currencies`: the Platform Currencies it offers; for each:
-  - `inpoints`, `outpoints`: `{ connection, currency }`, where `currency ∈ connection.currencies`
-- `exchangePairs`: `{ source, target }`, directional
+  - `inpoints`, `outpoints`: Endpoints `{ connection, currency }`, where `currency ∈ connection.currencies`
+- `exchangePairs`: `{ source, target }`, directional, both Currencies offered by the Platform
 
-An Inpoint or Outpoint may carry a different Currency from its Platform Currency (Deel USD Outpoint `{ cbu, ARS }`); the Platform converts at its own Exchange Rate.
+## Endpoints that convert
+An Endpoint may carry a different Currency from its Platform Currency; the Platform converts at its own Exchange Rate. This needs an Exchange Rate in Market Data, not an Exchange Pair: converting at an Endpoint does not let the user hold the carried Currency there.
+
+- Deel Wallet USD, Outpoint `{ cbu, ARS }`: USD is debited, ARS arrives at the receiving CBU account.
+- DollarApp USDC, Inpoint `{ polygon, USDT }`: USDT arrives over Polygon and is credited as USDC.
+- DollarApp USDC, Inpoint and Outpoint `{ cbu, USD }`: USD from or to a USD CBU account, converted to or from USDC (DollarApp warns about this Conversion).
 
 # User state
 
@@ -28,6 +33,8 @@ An Inpoint or Outpoint may carry a different Currency from its Platform Currency
 - `id` (a user may have two Accounts on one Platform, e.g. personal and joint)
 - `platform`
 - `balances`: one Amount per Currency; the keys declare which Platform Currencies the Account holds (a zero Balance still counts) and must be offered by the Platform
+
+Accounts are user input, never seed data. Example Accounts live in the scenario tests.
 
 ## Amount
 - `currency`, `minor` (integer Minor units, [ADR 0001](adr/0001-amounts-are-integer-minor-units.md)). Combining Amounts of different Currencies is a bug.
@@ -42,31 +49,33 @@ An Inpoint or Outpoint may carry a different Currency from its Platform Currency
   - *Only mine*: held Stops only
   - add/remove individual Stops
 - The starting and destination Stops are always in the Search Universe.
+- With no Accounts, every Stop is prospective, so Stops are exactly the Platform Currencies. The static Catalog page shows the Hops of that Search Universe.
 
 ## Hops (structure, from the Catalog only)
-- **Transfer** from Stop A to Stop B (A ≠ B, any Platforms): for each Outpoint `o` of A's Platform Currency and Inpoint `i` of B's where `o.connection = i.connection` and `o.currency = i.currency`.
-- **Exchange** from A to B: same Platform, an Exchange Pair `A.currency → B.currency`, and not two held Stops of different Accounts.
+A Hop from Stop A to Stop B (A ≠ B) exists:
+- **through a Connection**: for each Outpoint `o` of A's Platform Currency and Inpoint `i` of B's where `o.connection = i.connection` and `o.currency = i.currency`. Any Platforms, including the same one (personal → joint Santander over CBU).
+- **within an Account**: same Platform, an Exchange Pair `A.currency → B.currency`, and not two held Stops of different Accounts.
 
 ## Routes
-An ordered sequence of Hops from the starting to the destination Stop, within the Search Universe, visiting no Stop twice, at most `maxHops` long (default 4). Finding Routes needs no Market Data.
+An ordered sequence of Hops from the starting to the destination Stop, within the Search Universe. Finding Routes needs no Market Data.
 
 ## Quotes (evaluation)
 A Quote fixes one side and computes the other:
-- **Fixed Sent Amount**: run the Route forward. Best Quote = highest Delivered Amount.
-- **Fixed Delivered Amount**: the smallest Sent Amount whose forward run delivers at least the target (every step is monotonic, so this is a search over the forward run). Best Quote = lowest Sent Amount.
-- Ties: fewer Hops.
+- **Fixed Sent Amount**: run the Route forward. Best Quote = highest Delivered Amount. The Sent Amount is not capped by the starting Balance; the UI may warn instead.
+- **Fixed Delivered Amount**: the smallest Sent Amount whose forward run delivers at least the target. Every Leg is monotonic in its Amount, so this is a search over the forward run. Best Quote = lowest Sent Amount.
+- Ties: fewer Hops, since fewer Platforms means less that can go wrong.
 - Only the best Quote is returned.
 
-Each Leg records the Amount in, the Fees charged, the Exchange Rates applied and the Amount out.
-
 ### Evaluating a Leg
-Transfer:
+Each Leg records the Amount in, the Fees charged, the Exchange Rates applied and the Amount out. A Leg may apply two Conversions (one at each Endpoint).
+
+Through a Connection:
 1. Outpoint Fee, in A's Currency
 2. Conversion at A's Platform, if the Outpoint carries another Currency
 3. Inpoint Fee, in the carried Currency
 4. Conversion at B's Platform, if B holds another Currency
 
-Exchange: conversion at the Platform's Exchange Rate. Exchange Pairs carry no Fees; the rate is effective ([ADR 0002](adr/0002-exact-rational-rates-rounding-down.md)).
+Within an Account: one Conversion at the Platform's Exchange Rate. Exchange Pairs carry no Fees; the rate is effective ([ADR 0002](adr/0002-exact-rational-rates-rounding-down.md)).
 
 # Market Data
 
@@ -75,36 +84,21 @@ Time-varying, kept apart from the Catalog ([ADR 0003](adr/0003-market-data-separ
 ## Exchange Rate
 - `platform`, `source`, `target`, `rate` (exact rational, major target per major source), `asOf`
 - Conversion: `floor(x × rate × target.scale / source.scale)`
-- Used both by Exchanges and by cross-currency Inpoints/Outpoints.
+- Used by Exchange Pairs and by Endpoints that convert.
 
 ## Fee
-- On one Outpoint or Inpoint of a Platform Currency
-- `fixed` (Minor units of the charged Currency) and `proportional` (exact fraction)
+- On one Endpoint of a Platform Currency
+- `fixed` (Minor units of the charged Currency, ≥ 0) and `proportional` (exact fraction, 0 ≤ p < 1)
 - Charged on `x`: `x − fixed − ceil(x × proportional)`; a result ≤ 0 makes the Leg impossible for that Amount.
-- Every Outpoint and Inpoint has a Fee entry; a free one is an explicit zero, and a check fails the build when one is missing. An endpoint whose Fees nobody has researched does not belong in the Catalog yet.
-- A Hop missing its Exchange Rate or Fee cannot be quoted.
+- Completeness and missing data: see ADR 0003.
 
 # Seed data
 
-Values marked _(assumed)_ need checking against the real Platform. Market Data values are illustrative, not real.
-
-- Currencies: USD (2), ARS (2), USDT (6)
-- Connections: `ach` (USD), `cbu` (ARS, USD), `polygon` (USDT), `astropay` (USD), `dollarapp` (USD)
-- Deel Wallet
-  - USD Outpoints: `ach/USD`, `astropay/USD`, `dollarapp/USD`, `cbu/ARS` (cross-currency)
-  - ARS _(assumed)_, Outpoint `cbu/ARS`; Exchange Pair USD→ARS
-- DollarApp
-  - USD Inpoints: `ach/USD`, `dollarapp/USD`, `polygon/USDT` (cross-currency, _assumed_)
-  - ARS Outpoint: `cbu/ARS`; Exchange Pairs USD↔ARS
-- AstroPay
-  - USD Inpoints: `ach/USD`, `astropay/USD`; Outpoint `cbu/USD`
-  - ARS Outpoint `cbu/ARS`
-  - USDT _(assumed)_, Outpoint `polygon/USDT`
-  - Exchange Pairs USD↔ARS, USD↔USDT _(assumed)_
-- Santander Argentina: ARS Inpoint `cbu/ARS`; USD Inpoint `cbu/USD` _(assumed)_; Exchange Pairs USD↔ARS _(assumed)_
+The Catalog and illustrative Market Data live as YAML in `src/data/`; Zod schemas parse them at load. Entries marked `# assumed` need checking against the real Platform. Market Data values are illustrative, not real.
 
 # Out of scope for now
 - Transfer limits and durations
 - Splitting an Amount across several starting Stops
-- Crypto beyond USDT on Polygon
+- Seeding crypto beyond USDT on Polygon and USDC (supporting it needs no new concepts)
 - Conditional Fees (tiers, monthly free quotas)
+- Rewards. For example, AstroPay pays 1% of money arriving from Deel, up to USD 60 per calendar month: conditional, capped and periodic.

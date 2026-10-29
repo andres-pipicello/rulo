@@ -5,7 +5,7 @@ Finding the best way to move money held on one platform, in one currency, to ano
 ## Money
 
 **Currency**:
-A unit of value, identified by its symbol (USD, ARS, USDT, BTC), with a fixed smallest indivisible unit.
+A unit of value, identified by its symbol (USD, ARS, USDT, USDC, BTC), with a fixed smallest indivisible unit.
 _Avoid_: coin, asset, token
 
 **Minor unit**:
@@ -18,7 +18,11 @@ _Avoid_: value, sum, money
 
 **Exchange Rate**:
 How much of a target Currency one unit of a source Currency effectively buys on a given Platform at a given moment, any exchange cost included. One per direction: the two directions of a pair are the Platform's buy and sell prices.
-_Avoid_: price, quote, ratio
+_Avoid_: price, ratio
+
+**Conversion**:
+Turning an Amount of one Currency into another at a Platform's Exchange Rate, inside a Hop: through an Exchange Pair, or at an Endpoint whose carried Currency differs from its Platform Currency.
+_Avoid_: swap, trade
 
 **Fee**:
 What a Platform charges for sending through an Outpoint or receiving through an Inpoint, deducted from the Amount moving through it.
@@ -35,19 +39,23 @@ A Currency as held on a specific Platform (DollarApp USD). The places money can 
 _Avoid_: node, slot, holding
 
 **Connection**:
-A way money can travel between Stops: a payment rail (ACH, CBU), a blockchain network (Polygon) or a Platform's own link.
+A way money travels from an Outpoint to an Inpoint: a payment rail (ACH, CBU), a blockchain network (Polygon) or a Platform's own link.
 _Avoid_: rail, network, channel, method
 
+**Endpoint**:
+An Outpoint or Inpoint: a Connection plus the Currency carried through it, which may differ from its Platform Currency.
+_Avoid_: access point, gateway
+
 **Inpoint**:
-A way a Platform Currency accepts money: a Connection plus the Currency arriving through it, which may differ from the one credited.
-_Avoid_: deposit method, entrypoint, endpoint
+An Endpoint through which a Platform Currency accepts money.
+_Avoid_: deposit method, entrypoint
 
 **Outpoint**:
-A way a Platform Currency sends money out: a Connection plus the Currency delivered through it, which may differ from the one debited.
-_Avoid_: withdrawal method, exitpoint, endpoint
+An Endpoint through which a Platform Currency sends money out.
+_Avoid_: withdrawal method, exitpoint
 
 **Exchange Pair**:
-A source and target Currency that a Platform converts between, in that direction.
+A source and target Currency, both held on a Platform, that it converts between within an Account, in that direction.
 _Avoid_: market, trading pair, symbol
 
 ## User state
@@ -73,23 +81,15 @@ A place money can sit during a search: one of the user's Balances (held) or a Pl
 _Avoid_: node, vertex, place, holding
 
 **Hop**:
-A direct way to move money from one Stop to another, by Transfer or Exchange, as the Catalog allows.
-_Avoid_: edge, link, step
-
-**Transfer**:
-A Hop between two Stops, possibly on the same Platform: an Outpoint of the source matched to an Inpoint of the target over the same Connection.
-_Avoid_: payment, withdrawal, deposit
-
-**Exchange**:
-A Hop between two Currencies of the same Account (Santander ARS → Santander USD), converting along one of the Platform's Exchange Pairs.
-_Avoid_: trade, swap, conversion
+A direct move from one Stop to another, possibly changing Platform, Currency or both: through a Connection (an Outpoint matched to an Inpoint), or within an Account (one of the Platform's Exchange Pairs, never between two Accounts).
+_Avoid_: edge, link, step, transfer, exchange
 
 **Route**:
 An ordered sequence of Hops from a starting Stop to a destination Stop. "There is a Route from A to B" means at least one exists.
 _Avoid_: path, chain, itinerary
 
 **Leg**:
-A Hop taken with a specific Amount: the Amount in, the Fees charged, the Exchange Rate applied and the Amount out.
+A Hop taken with a specific Amount: the Amount in, the Fees charged, the Exchange Rates applied and the Amount out.
 _Avoid_: step, execution
 
 **Quote**:
@@ -101,13 +101,13 @@ What a Quote takes from its starting Stop.
 _Avoid_: input, source amount, cost
 
 **Delivered Amount**:
-What a Quote delivers at its destination Stop, after every Exchange Rate and Fee.
+What a Quote delivers at its destination Stop, after every Conversion and Fee.
 _Avoid_: output, result, net
 
 ## Data
 
 **Catalog**:
-The static description of Platforms, Currencies, Connections and their Inpoints, Outpoints and Exchange Pairs.
+The static description of Platforms, Currencies, Connections and their Endpoints and Exchange Pairs.
 _Avoid_: seed, config, registry
 
 **Market Data**:
