@@ -1,115 +1,110 @@
-> **Draft.** Detailed shape of the domain until it is expressed as types, schemas and tests in `src/core/`; then this file is deleted. Terms are defined in [GLOSSARY.md](../GLOSSARY.md); the reasons behind the shape are in [docs/adr/](adr/).
+> **Draft.** Detailed shape of the domain until it is fully expressed as types, schemas and tests in `src/core/`; then this file is deleted. Terms are defined in [GLOSSARY.md](../GLOSSARY.md); the reasons behind the shape are in [docs/adr/](adr/).
 
 # Catalog
 
-Static description of the world, loaded from seed data.
+Static description of what exists, loaded from seed data.
 
 ## Currency
 - `symbol`: unique code (`USD`, `ARS`, `USDT`, `BTC`)
-- `decimals`: number of decimal places of the Minor unit
-  - USD 2, ARS 2, USDT 6, BTC 8
-- Derived: `scale = 10 ^ decimals` (Minor units per major unit)
+- `decimals`: number of decimal places of the Minor unit (USD 2, ARS 2, USDT 6, BTC 8)
+- Derived: `scale = 10 ^ decimals`
 
 ## Connection
-- `id`: unique (`ach`, `cbu`, or a Platform id for native links)
-- `kind`: `rail` (shared payment network) or `native` (a Platform's own link, `platform` names it)
-- `currencies`: Currencies the Connection can carry
-  - ACH: USD
-  - CBU: ARS, USD
-- Every Platform implies a native Connection with the Platform's id.
+- `id`: unique (`ach`, `cbu`, `polygon`, `dollarapp`)
+- `currencies`: Currencies it can carry
+- Declared explicitly; a Platform's own link is named after the Platform by convention. A stablecoin on two networks is one Currency over two Connections.
 
 ## Platform
 - `id`, `name`
-- `currencies`: the Platform Currencies it holds; for each Currency:
-  - `inpoints`: Inpoint*
-  - `outpoints`: Outpoint*
-- `exchangePairs`: Exchange Pair*
+- `currencies`: the Platform Currencies it offers; for each:
+  - `inpoints`, `outpoints`: `{ connection, currency }`, where `currency ∈ connection.currencies`
+- `exchangePairs`: `{ source, target }`, directional
 
-## Inpoint / Outpoint
-Belongs to one Platform Currency.
-- `connection`: Connection id
-- `currency`: the Currency travelling over the Connection. Usually the Platform Currency's own; when different, the Platform converts at its Exchange Rate for that pair.
-- Invariant: `currency ∈ connection.currencies`.
-
-Example: Deel Wallet's USD has Outpoint `{ connection: cbu, currency: ARS }`: USD is debited and ARS is delivered over CBU, converted at Deel's USD→ARS rate (the Deel use case in the spec).
-
-## Exchange Pair
-- `source`, `target`: Currencies. Directional: USD→ARS and ARS→USD are two pairs (sell vs buy).
-- An Exchange Route needs both Currencies held by the Platform; a pair used only by a cross-currency Outpoint/Inpoint does not.
-
-# Routes and Paths
-
-Routes are derived from the Catalog, never declared.
-
-- **Transfer** from Platform Currency A to B (different Platforms) exists for each Outpoint `o` of A and Inpoint `i` of B where `o.connection = i.connection` and `o.currency = i.currency`.
-- **Exchange** from A to B (same Platform) exists for each Exchange Pair `A.currency → B.currency`.
-- A **Path** is a sequence of Routes where each Route starts where the previous one ended, visiting no Platform Currency twice.
-
-Example: Deel Wallet USD -[Transfer: ach/USD]-> DollarApp USD -[Exchange]-> DollarApp ARS -[Transfer: cbu/ARS]-> Santander Argentina ARS
-
-# Market Data
-
-Time-varying, resolved only when evaluating Paths ([ADR 0003](adr/0003-market-data-separate-from-catalog.md)).
-
-## Exchange Rate
-- `platform`, `source`, `target`
-- `rate`: exact rational, major units of target per one major unit of source
-- `asOf`: instant the rate was observed
-
-Converting `x` Minor units of source: `floor(x × rate × target.scale / source.scale)` ([ADR 0002](adr/0002-exact-rational-rates-rounding-down.md)).
-
-## Fee
-- Attached to one Outpoint, Inpoint or Exchange Pair of a Platform
-- `fixed`: Minor units of the Currency being charged
-- `proportional`: exact rational fraction (e.g. 1/100 for 1%)
-- Charged on the incoming Amount `x`: `x − fixed − ceil(x × proportional)`. A result ≤ 0 makes the Route unusable for that Amount.
-
-## Evaluating a Route
-1. Transfer: Outpoint Fee, in the source Platform Currency's Currency
-2. Conversion, if the Currency changes (Exchange, or a cross-currency Outpoint/Inpoint)
-3. Transfer: Inpoint Fee, in the arriving Currency
-
-An Exchange charges its Exchange Pair Fee before converting.
+An Inpoint or Outpoint may carry a different Currency from its Platform Currency (Deel USD Outpoint `{ cbu, ARS }`); the Platform converts at its own Exchange Rate.
 
 # User state
 
 ## Account
+- `id` (a user may have two Accounts on one Platform, e.g. personal and joint)
 - `platform`
-- `balances`: Amount per Currency; keys ⊆ the Platform's Currencies
+- `balances`: one Amount per Currency; the keys declare which Platform Currencies the Account holds (a zero Balance still counts) and must be offered by the Platform
 
 ## Amount
-- `currency`
-- `minor`: integer number of Minor units ([ADR 0001](adr/0001-amounts-are-integer-minor-units.md))
-- Adding or comparing Amounts of different Currencies is a bug.
+- `currency`, `minor` (integer Minor units, [ADR 0001](adr/0001-amounts-are-integer-minor-units.md)). Combining Amounts of different Currencies is a bug.
 
-# Seed data (milestone 1)
+# Search
 
-Values marked _(assumed)_ are placeholders until checked against the real Platform.
+## Stops and the Search Universe
+- **Held Stop**: one per Balance (Account × Currency)
+- **Prospective Stop**: one per Platform Currency the user holds in no Account
+- **Search Universe**: a set of Stops, built from presets and then edited:
+  - *Everything*: every held and prospective Stop
+  - *Only mine*: held Stops only
+  - add/remove individual Stops
+- The starting and destination Stops are always in the Search Universe.
 
-- Currencies: USD (2), ARS (2)
-- Connections: `ach` (USD), `cbu` (ARS, USD), native `astropay` (USD), `dollarapp` (USD)
-- Platforms
-  - Deel Wallet: USD
-    - USD Outpoints: `ach/USD`, `astropay/USD`, `dollarapp/USD`, `cbu/ARS` (cross-currency)
-  - DollarApp: USD, ARS
-    - USD Inpoints: `ach/USD`, `dollarapp/USD`
-    - ARS Outpoints: `cbu/ARS`
-    - Exchange Pairs: USD→ARS, ARS→USD
-  - AstroPay: USD, ARS
-    - USD Inpoints: `ach/USD`, `astropay/USD`
-    - USD Outpoints: `cbu/USD`
-    - ARS Outpoints: `cbu/ARS`
-    - Exchange Pairs: USD→ARS, ARS→USD
-  - Santander Argentina: ARS, USD _(assumed)_
-    - ARS Inpoints: `cbu/ARS`; USD Inpoints: `cbu/USD` _(assumed)_
-    - Exchange Pairs: USD→ARS, ARS→USD _(assumed)_
-- Market Data: illustrative rates and Fees only, clearly marked as non-real
+## Hops (structure, from the Catalog only)
+- **Transfer** from Stop A to Stop B (A ≠ B, any Platforms): for each Outpoint `o` of A's Platform Currency and Inpoint `i` of B's where `o.connection = i.connection` and `o.currency = i.currency`.
+- **Exchange** from A to B: same Platform, an Exchange Pair `A.currency → B.currency`, and not two held Stops of different Accounts.
 
-# Open questions
+## Routes
+An ordered sequence of Hops from the starting to the destination Stop, within the Search Universe, visiting no Stop twice, at most `maxHops` long (default 4). Finding Routes needs no Market Data.
 
-1. **Account vs Platform Currency in Paths.** Paths run between Platform Currencies (catalog view). Should evaluating a Path require the user to hold an Account on every intermediate Platform, and should Balances constrain the starting Amount?
-2. **Rate direction and spread.** Is one directional Exchange Rate per pair enough, or do we need explicit bid/ask (the Platform Popup's Buy/Sell toggle)?
-3. **Limits.** Minimum and maximum Amounts per Outpoint/Inpoint (common on CBU and ACH) are not modelled.
-4. **Time.** Transfers take different times (instant vs T+1). Should duration be part of ranking?
-5. **Crypto.** Binance, Coinbase, USDT and BTC are in the spec examples but not in the seed; networks (TRC20, ERC20) would be Connections. Confirm before adding.
-6. **Native Connection currencies.** Does a native link carry every Currency both Platforms hold, or must it be listed per Platform?
+## Quotes (evaluation)
+A Quote fixes one side and computes the other:
+- **Fixed Sent Amount**: run the Route forward. Best Quote = highest Delivered Amount.
+- **Fixed Delivered Amount**: the smallest Sent Amount whose forward run delivers at least the target (every step is monotonic, so this is a search over the forward run). Best Quote = lowest Sent Amount.
+- Ties: fewer Hops.
+- Only the best Quote is returned.
+
+Each Leg records the Amount in, the Fees charged, the Exchange Rates applied and the Amount out.
+
+### Evaluating a Leg
+Transfer:
+1. Outpoint Fee, in A's Currency
+2. Conversion at A's Platform, if the Outpoint carries another Currency
+3. Inpoint Fee, in the carried Currency
+4. Conversion at B's Platform, if B holds another Currency
+
+Exchange: conversion at the Platform's Exchange Rate. Exchange Pairs carry no Fees; the rate is effective ([ADR 0002](adr/0002-exact-rational-rates-rounding-down.md)).
+
+# Market Data
+
+Time-varying, kept apart from the Catalog ([ADR 0003](adr/0003-market-data-separate-from-catalog.md)).
+
+## Exchange Rate
+- `platform`, `source`, `target`, `rate` (exact rational, major target per major source), `asOf`
+- Conversion: `floor(x × rate × target.scale / source.scale)`
+- Used both by Exchanges and by cross-currency Inpoints/Outpoints.
+
+## Fee
+- On one Outpoint or Inpoint of a Platform Currency
+- `fixed` (Minor units of the charged Currency) and `proportional` (exact fraction)
+- Charged on `x`: `x − fixed − ceil(x × proportional)`; a result ≤ 0 makes the Leg impossible for that Amount.
+- Every Outpoint and Inpoint has a Fee entry; a free one is an explicit zero, and a check fails the build when one is missing. An endpoint whose Fees nobody has researched does not belong in the Catalog yet.
+- A Hop missing its Exchange Rate or Fee cannot be quoted.
+
+# Seed data
+
+Values marked _(assumed)_ need checking against the real Platform. Market Data values are illustrative, not real.
+
+- Currencies: USD (2), ARS (2), USDT (6)
+- Connections: `ach` (USD), `cbu` (ARS, USD), `polygon` (USDT), `astropay` (USD), `dollarapp` (USD)
+- Deel Wallet
+  - USD Outpoints: `ach/USD`, `astropay/USD`, `dollarapp/USD`, `cbu/ARS` (cross-currency)
+  - ARS _(assumed)_, Outpoint `cbu/ARS`; Exchange Pair USD→ARS
+- DollarApp
+  - USD Inpoints: `ach/USD`, `dollarapp/USD`, `polygon/USDT` (cross-currency, _assumed_)
+  - ARS Outpoint: `cbu/ARS`; Exchange Pairs USD↔ARS
+- AstroPay
+  - USD Inpoints: `ach/USD`, `astropay/USD`; Outpoint `cbu/USD`
+  - ARS Outpoint `cbu/ARS`
+  - USDT _(assumed)_, Outpoint `polygon/USDT`
+  - Exchange Pairs USD↔ARS, USD↔USDT _(assumed)_
+- Santander Argentina: ARS Inpoint `cbu/ARS`; USD Inpoint `cbu/USD` _(assumed)_; Exchange Pairs USD↔ARS _(assumed)_
+
+# Out of scope for now
+- Transfer limits and durations
+- Splitting an Amount across several starting Stops
+- Crypto beyond USDT on Polygon
+- Conditional Fees (tiers, monthly free quotas)
