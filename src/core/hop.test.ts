@@ -79,28 +79,28 @@ const held = (account: string, platform: PlatformId, currency: CurrencyCode): St
   currency,
 });
 
-const usdToBtc: Hop = { kind: "exchange", from: prospective(ex, USD), to: prospective(ex, BTC) };
-const btcToUsd: Hop = { kind: "exchange", from: usdToBtc.to, to: usdToBtc.from };
+const usdToBtc: Hop = { from: prospective(ex, USD), to: prospective(ex, BTC), via: null };
+const btcToUsd: Hop = { from: usdToBtc.to, to: usdToBtc.from, via: null };
 
 describe("Hop.derive", () => {
-  test("Transfers connect two Accounts on the same Platform", () => {
+  test("Hops through a Connection link two Accounts on the same Platform", () => {
     const personal = held("personal", bank, ARS);
     const joint = held("joint", bank, ARS);
     expect(Hops.derive(catalog, [personal, joint])).toEqual([
-      { kind: "transfer", from: personal, to: joint, via: { connection: "cbu", currency: ARS } },
-      { kind: "transfer", from: joint, to: personal, via: { connection: "cbu", currency: ARS } },
+      { from: personal, to: joint, via: { connection: "cbu", currency: ARS } },
+      { from: joint, to: personal, via: { connection: "cbu", currency: ARS } },
     ]);
   });
 
-  test("Exchanges stay within one Account, or reach a prospective Stop", () => {
+  test("Hops without a Connection stay within one Account, or reach a prospective Stop", () => {
     const personalArs = held("personal", bank, ARS);
     const jointUsd = held("joint", bank, USD);
     const newUsd = prospective(bank, USD);
     const exchanges = (universe: readonly Stop[]) =>
-      Hops.derive(catalog, universe).filter((h) => h.kind === "exchange");
+      Hops.derive(catalog, universe).filter((h) => h.via === null);
     expect(exchanges([personalArs, jointUsd])).toEqual([]);
     expect(exchanges([personalArs, newUsd])).toEqual([
-      { kind: "exchange", from: personalArs, to: newUsd },
+      { from: personalArs, to: newUsd, via: null },
     ]);
   });
 

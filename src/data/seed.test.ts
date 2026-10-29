@@ -10,8 +10,12 @@ import { Quote } from "@/core/quote";
 import type { Stop } from "@/core/stop";
 import { SearchUniverse } from "@/core/stop";
 
-import { catalog, market } from ".";
-import { seedCatalog, seedMarket } from "./seed";
+import type { z } from "zod";
+
+import { catalog, market, rawCatalog, rawMarket } from ".";
+
+const seedCatalog = rawCatalog as z.input<typeof Catalog.schema>;
+const seedMarket = rawMarket as z.input<typeof MarketData.schema>;
 
 // A freelancer paid through Deel, banking with Santander.
 const accounts = Account.listSchema(catalog).parse([
@@ -51,6 +55,13 @@ describe("seed data", () => {
     ).toBe(false);
   });
 
+  test("rejects a negative Fee", () => {
+    const [fee] = seedMarket.fees;
+    if (!fee) throw new Error("seed has no fees");
+    const negative = { ...fee, fixed: "-1" };
+    expect(MarketData.schema.safeParse({ ...seedMarket, fees: [negative] }).success).toBe(false);
+  });
+
   test("rejects a Balance in a Currency the Platform does not offer", () => {
     const result = Account.listSchema(catalog).safeParse([
       { id: "x", platform: "deel-wallet", balances: [{ currency: "USDT", minor: "0" }] },
@@ -74,11 +85,9 @@ describe("Quote.best: paid through Deel, banking with Santander", () => {
     if (!quote.ok) throw new Error(quote.error.kind);
     // $1,000 free to DollarApp × 1194, free CBU out
     expect(quote.value.delivered).toEqual(Amount.of(ARS, 119_400_000n));
-    expect(quote.value.route.map((h) => `${h.kind} ${h.to.platform}`)).toEqual([
-      "transfer dollarapp",
-      "exchange dollarapp",
-      "transfer santander-ar",
-    ]);
+    expect(
+      quote.value.route.map((h) => `${h.via?.connection ?? "within"} ${h.to.platform}`),
+    ).toEqual(["dollarapp dollarapp", "within dollarapp", "cbu santander-ar"]);
     expect(quote.value.route.map((h) => h.to.kind)).toEqual(["prospective", "prospective", "held"]);
   });
 
@@ -123,5 +132,30 @@ describe("Quote.best: paid through Deel, banking with Santander", () => {
     });
     // Deel USD → Deel ARS (×1150) → CBU to Santander
     expect(quote.ok && quote.value.delivered).toEqual(Amount.of(ARS, 115_000_000n));
+  });
+});
+
+describe("Quote.best: Endpoints that convert", () => {
+  test("USDT sent over Polygon arrives at DollarApp as USDC", () => {
+    const universe = SearchUniverse.everything(catalog, []);
+    const [astropayUsdt, dollarappUsdc] = ["astropay:USDT", "dollarapp:USDC"].map((key) => {
+      const stop = universe.find((s) => `${s.platform}:${s.currency}` === key);
+      if (!stop) throw new Error(`no Stop ${key}`);
+      return stop;
+    }) as [Stop, Stop];
+    const quote = Quote.best(catalog, market, {
+      from: astropayUsdt,
+      to: dollarappUsdc,
+      universe,
+      fixed: { side: "sent", amount: Amount.of(astropayUsdt.currency, 100_000_000n) },
+      maxHops: 1,
+    });
+    // 100 USDT − 0.1 USDT Outpoint Fee = 99.9 USDT, × 0.999 at DollarApp = 99.8001 USDC
+    expect(quote.ok && quote.value.delivered).toEqual(
+      Amount.of(dollarappUsdc.currency, 99_800_100n),
+    );
+    expect(quote.ok && quote.value.legs[0]?.rates.map((r) => `${r.source}→${r.target}`)).toEqual([
+      "USDT→USDC",
+    ]);
   });
 });

@@ -1,0 +1,92 @@
+# Milestone-1 Catalog. Entries marked "# assumed" are unverified against the real Platform.
+
+currencies:
+  - { symbol: USD, decimals: 2 }
+  - { symbol: ARS, decimals: 2 }
+  - { symbol: USDT, decimals: 6 }
+  - { symbol: USDC, decimals: 6 }
+
+connections:
+  - { id: ach, currencies: [USD] }
+  - { id: cbu, currencies: [ARS, USD] }
+  - { id: polygon, currencies: [USDT] }
+  - { id: astropay, currencies: [USD] }
+  - { id: dollarapp, currencies: [USD] }
+
+platforms:
+  - id: deel-wallet
+    name: Deel Wallet
+    currencies:
+      - currency: USD
+        inpoints: []
+        outpoints:
+          - { connection: ach, currency: USD }
+          - { connection: astropay, currency: USD }
+          - { connection: dollarapp, currency: USD }
+          - { connection: cbu, currency: ARS } # converts: USD debited, ARS delivered
+      - currency: ARS # assumed
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+    exchangePairs:
+      - { source: USD, target: ARS } # assumed
+
+  - id: dollarapp
+    name: DollarApp
+    currencies:
+      - currency: USD
+        inpoints:
+          - { connection: ach, currency: USD }
+          - { connection: dollarapp, currency: USD }
+        outpoints: []
+      - currency: USDC
+        inpoints:
+          - { connection: polygon, currency: USDT } # converts: USDT arrives, USDC credited
+          - { connection: cbu, currency: USD } # converts: USD from a USD CBU account
+        outpoints:
+          - { connection: cbu, currency: USD } # converts: USD to a USD CBU account
+      - currency: ARS
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+    exchangePairs:
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
+
+  - id: astropay
+    name: AstroPay
+    currencies:
+      - currency: USD
+        inpoints:
+          - { connection: ach, currency: USD }
+          - { connection: astropay, currency: USD }
+        outpoints:
+          - { connection: cbu, currency: USD }
+      - currency: ARS
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+      - currency: USDT
+        inpoints: []
+        outpoints:
+          - { connection: polygon, currency: USDT }
+    exchangePairs:
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
+      - { source: USD, target: USDT }
+      - { source: USDT, target: USD }
+
+  - id: santander-ar
+    name: Santander Argentina
+    currencies:
+      - currency: ARS
+        inpoints:
+          - { connection: cbu, currency: ARS }
+        outpoints: []
+      - currency: USD # assumed
+        inpoints:
+          - { connection: cbu, currency: USD }
+        outpoints: []
+    exchangePairs: # assumed
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
