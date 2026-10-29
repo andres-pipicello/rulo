@@ -36,12 +36,21 @@ export const OfferedCurrency = z
   .readonly();
 export type OfferedCurrency = z.infer<typeof OfferedCurrency>;
 
+/** Where a Platform's Fees or Exchange Rates come from: listed in the seed, or fetched from an origin. */
+export const MarketDataSource = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("fixed") }).readonly(),
+  z.object({ kind: z.literal("dynamic"), origin: z.string().min(1) }).readonly(),
+]);
+export type MarketDataSource = z.infer<typeof MarketDataSource>;
+
 export const Platform = z
   .object({
     id: PlatformId,
     name: z.string().min(1),
     currencies: z.array(OfferedCurrency).readonly(),
     exchangePairs: z.array(ExchangePair).readonly(),
+    fees: MarketDataSource,
+    rates: MarketDataSource,
   })
   .readonly();
 export type Platform = z.infer<typeof Platform>;

@@ -9,7 +9,8 @@ import { Catalog, PlatformId } from "./catalog";
 import { CurrencyCode } from "./currency";
 import type { Hop } from "./hop";
 import { Hop as Hops } from "./hop";
-import type { MarketData } from "./market-data";
+import type { ExchangeRate } from "./market-data";
+import { MarketData } from "./market-data";
 import { Rational } from "./rational";
 import type { Stop } from "./stop";
 
@@ -38,6 +39,8 @@ const catalog = Catalog.schema.parse({
         { source: "USD", target: "BTC" },
         { source: "BTC", target: "USD" },
       ],
+      fees: { kind: "fixed" },
+      rates: { kind: "dynamic", origin: "test" },
     },
     {
       id: "bank",
@@ -51,21 +54,29 @@ const catalog = Catalog.schema.parse({
         { currency: "USD", inpoints: [], outpoints: [] },
       ],
       exchangePairs: [{ source: "ARS", target: "USD" }],
+      fees: { kind: "fixed" },
+      rates: { kind: "dynamic", origin: "test" },
     },
   ],
 } satisfies z.input<typeof Catalog.schema>);
 
-const asOf = Temporal.Instant.from("2026-10-01T00:00:00Z");
+const fetchedAt = Temporal.Instant.from("2026-10-01T00:00:00Z");
+const rate = (source: CurrencyCode, target: CurrencyCode, value: Rational): ExchangeRate => ({
+  platform: ex,
+  source,
+  target,
+  rate: value,
+  provenance: { kind: "fetched", origin: "test", fetchedAt },
+});
 
-function marketWith(buy: Rational, sell: Rational): MarketData {
-  return {
-    rates: [
-      { platform: ex, source: USD, target: BTC, rate: buy, asOf },
-      { platform: ex, source: BTC, target: USD, rate: sell, asOf },
-    ],
+/** Exchange buys BTC at `price` USD and sells it at `price` USD. */
+const contextAt = (price: bigint) => ({
+  catalog,
+  market: MarketData.inMemory({
+    rates: [rate(USD, BTC, Rational.of(1n, price)), rate(BTC, USD, Rational.of(price, 1n))],
     fees: [],
-  };
-}
+  }),
+});
 
 const prospective = (platform: PlatformId, currency: CurrencyCode): Stop => ({
   kind: "prospective",
@@ -82,6 +93,12 @@ const held = (account: string, platform: PlatformId, currency: CurrencyCode): St
 const usdToBtc: Hop = { from: prospective(ex, USD), to: prospective(ex, BTC), via: null };
 const btcToUsd: Hop = { from: usdToBtc.to, to: usdToBtc.from, via: null };
 
+async function resolved(context: ReturnType<typeof contextAt>, hop: Hop) {
+  const result = await Hops.resolve(context, hop);
+  if (!result) throw new Error("expected every value to be known");
+  return result;
+}
+
 describe("Hop.derive", () => {
   test("Hops through a Connection link two Accounts on the same Platform", () => {
     const personal = held("personal", bank, ARS);
@@ -96,12 +113,10 @@ describe("Hop.derive", () => {
     const personalArs = held("personal", bank, ARS);
     const jointUsd = held("joint", bank, USD);
     const newUsd = prospective(bank, USD);
-    const exchanges = (universe: readonly Stop[]) =>
+    const within = (universe: readonly Stop[]) =>
       Hops.derive(catalog, universe).filter((h) => h.via === null);
-    expect(exchanges([personalArs, jointUsd])).toEqual([]);
-    expect(exchanges([personalArs, newUsd])).toEqual([
-      { from: personalArs, to: newUsd, via: null },
-    ]);
+    expect(within([personalArs, jointUsd])).toEqual([]);
+    expect(within([personalArs, newUsd])).toEqual([{ from: personalArs, to: newUsd, via: null }]);
   });
 
   test("only Stops in the Search Universe are connected", () => {
@@ -110,26 +125,22 @@ describe("Hop.derive", () => {
 });
 
 describe("Hop.take", () => {
-  test("converts across different decimal places", () => {
+  test("converts across different decimal places", async () => {
     // $50,000.00 at 1/50000 BTC per USD = 1 BTC = 100,000,000 sats
-    const market = marketWith(Rational.of(1n, 50_000n), Rational.of(50_000n, 1n));
-    const leg = Hops.take({ catalog, market }, usdToBtc, Amount.of(USD, 5_000_000n));
+    const leg = Hops.take(await resolved(contextAt(50_000n), usdToBtc), Amount.of(USD, 5_000_000n));
     expect(leg.ok && leg.value.delivered).toEqual(Amount.of(BTC, 100_000_000n));
   });
 
-  test("converting there and back at the inverse rate never creates money", () => {
-    fc.assert(
-      fc.property(
+  test("converting there and back at the inverse rate never creates money", async () => {
+    await fc.assert(
+      fc.asyncProperty(
         fc.bigInt({ min: 1n, max: 10n ** 12n }),
         fc.bigInt({ min: 1n, max: 10n ** 6n }),
-        (minor, price) => {
-          const context = {
-            catalog,
-            market: marketWith(Rational.of(1n, price), Rational.of(price, 1n)),
-          };
-          const there = Hops.take(context, usdToBtc, Amount.of(USD, minor));
+        async (minor, price) => {
+          const context = contextAt(price);
+          const there = Hops.take(await resolved(context, usdToBtc), Amount.of(USD, minor));
           if (!there.ok) return;
-          const back = Hops.take(context, btcToUsd, there.value.delivered);
+          const back = Hops.take(await resolved(context, btcToUsd), there.value.delivered);
           if (!back.ok) return;
           expect(back.value.delivered.minor).toBeLessThanOrEqual(minor);
         },
@@ -137,8 +148,28 @@ describe("Hop.take", () => {
     );
   });
 
-  test("a missing Exchange Rate is reported before any Amount is involved", () => {
-    const market: MarketData = { rates: [], fees: [] };
-    expect(Hops.missing({ catalog, market }, usdToBtc)).toMatchObject([{ kind: "missing-rate" }]);
+  test("a Hop with an unknown Exchange Rate cannot be resolved", async () => {
+    const context = { catalog, market: MarketData.inMemory({ rates: [], fees: [] }) };
+    expect(await Hops.resolve(context, usdToBtc)).toBeUndefined();
+  });
+});
+
+describe("Hop.minimumSent", () => {
+  test("is the smallest Amount that delivers at least the target", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.bigInt({ min: 1n, max: 10n ** 10n }),
+        fc.bigInt({ min: 1n, max: 10n ** 6n }),
+        async (target, price) => {
+          const hop = await resolved(contextAt(price), usdToBtc);
+          const sent = Hops.minimumSent(hop, Amount.of(BTC, target));
+          if (!sent) throw new Error("unreachable target");
+          const enough = Hops.take(hop, sent);
+          expect(enough.ok && enough.value.delivered.minor >= target).toBe(true);
+          const less = Hops.take(hop, Amount.of(USD, sent.minor - 1n));
+          expect(!less.ok || less.value.delivered.minor < target).toBe(true);
+        },
+      ),
+    );
   });
 });

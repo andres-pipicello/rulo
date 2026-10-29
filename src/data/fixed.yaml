@@ -1,32 +1,8 @@
-# Illustrative Market Data only: these are NOT real rates or Fees.
-# Exchange Rates are effective (any exchange cost folded in). Every Endpoint needs a Fee entry;
-# a free one is an explicit zero.
+# Fixed Market Data: values for Platforms whose Fees or Exchange Rates are declared fixed in
+# catalog.yaml. Illustrative only: these are NOT real Fees. Every Endpoint of a Platform with fixed
+# Fees needs an entry; a free one is an explicit zero.
 
-rates:
-  - { platform: deel-wallet, source: USD, target: ARS, rate: "1150", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: dollarapp, source: USD, target: ARS, rate: "1194", asOf: "2026-10-01T12:00:00Z" }
-  - {
-      platform: dollarapp,
-      source: ARS,
-      target: USD,
-      rate: "0.000796",
-      asOf: "2026-10-01T12:00:00Z",
-    }
-  - { platform: dollarapp, source: USDT, target: USDC, rate: "0.999", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: dollarapp, source: USD, target: USDC, rate: "0.995", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: dollarapp, source: USDC, target: USD, rate: "0.995", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: astropay, source: USD, target: ARS, rate: "1178", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: astropay, source: ARS, target: USD, rate: "0.00077", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: astropay, source: USD, target: USDT, rate: "0.99", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: astropay, source: USDT, target: USD, rate: "0.99", asOf: "2026-10-01T12:00:00Z" }
-  - { platform: santander-ar, source: USD, target: ARS, rate: "1100", asOf: "2026-10-01T12:00:00Z" }
-  - {
-      platform: santander-ar,
-      source: ARS,
-      target: USD,
-      rate: "0.00075",
-      asOf: "2026-10-01T12:00:00Z",
-    }
+rates: []
 
 # fixed: Minor units of the charged Currency; proportional: fraction below 1
 fees:

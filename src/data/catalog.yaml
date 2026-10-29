@@ -1,4 +1,6 @@
 # Milestone-1 Catalog. Entries marked "# assumed" are unverified against the real Platform.
+# Each Platform declares its Fees and Exchange Rates as fixed (values in fixed.yaml) or dynamic
+# (fetched from an origin). Origin names are placeholders until rate fetching exists.
 
 currencies:
   - { symbol: USD, decimals: 2 }
@@ -16,6 +18,8 @@ connections:
 platforms:
   - id: deel-wallet
     name: Deel Wallet
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: deel-wallet }
     currencies:
       - currency: USD
         inpoints: []
@@ -33,6 +37,8 @@ platforms:
 
   - id: dollarapp
     name: DollarApp
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: dollarapp }
     currencies:
       - currency: USD
         inpoints:
@@ -55,6 +61,8 @@ platforms:
 
   - id: astropay
     name: AstroPay
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: astropay }
     currencies:
       - currency: USD
         inpoints:
@@ -78,6 +86,8 @@ platforms:
 
   - id: santander-ar
     name: Santander Argentina
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: santander-ar }
     currencies:
       - currency: ARS
         inpoints:

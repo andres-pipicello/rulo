@@ -1,10 +1,8 @@
 import { Amount } from "./amount";
-import type { Endpoint, PlatformId } from "./catalog";
+import type { Endpoint } from "./catalog";
 import { Catalog } from "./catalog";
-import type { CurrencyCode } from "./currency";
 import { Currency } from "./currency";
-import type { ExchangeRate, FeeTarget } from "./market-data";
-import { MarketData } from "./market-data";
+import type { ExchangeRate, Fee, MarketDataResolver } from "./market-data";
 import { Rational } from "./rational";
 import { Result } from "./result";
 import type { SearchUniverse } from "./stop";
@@ -21,21 +19,14 @@ export type Leg = Readonly<{
   hop: Hop;
   sent: Amount;
   delivered: Amount;
-  fees: readonly Amount[];
+  fees: readonly Readonly<{ fee: Fee; charged: Amount }>[];
   rates: readonly ExchangeRate[];
 }>;
 
-export type Unquotable =
-  | Readonly<{
-      kind: "missing-rate";
-      platform: PlatformId;
-      source: CurrencyCode;
-      target: CurrencyCode;
-    }>
-  | Readonly<{ kind: "missing-fee"; platform: PlatformId; on: FeeTarget }>
-  | Readonly<{ kind: "insufficient" }>;
+/** The Amount was used up by Fees or rounding. */
+export type Insufficient = Readonly<{ kind: "insufficient" }>;
 
-export type Context = Readonly<{ catalog: Catalog; market: MarketData }>;
+export type Context = Readonly<{ catalog: Catalog; market: MarketDataResolver }>;
 
 /** Hops through a Connection between any two Stops, or within one Account, inside the Search Universe. */
 function derive(catalog: Catalog, universe: SearchUniverse): readonly Hop[] {
@@ -66,95 +57,109 @@ function derive(catalog: Catalog, universe: SearchUniverse): readonly Hop[] {
 }
 
 type Step =
-  | Readonly<{ kind: "fee"; platform: PlatformId; on: FeeTarget }>
-  | Readonly<{ kind: "convert"; platform: PlatformId; source: CurrencyCode; target: CurrencyCode }>;
+  | Readonly<{ kind: "fee"; fee: Fee }>
+  | Readonly<{ kind: "convert"; rate: ExchangeRate; scaled: Rational }>;
 
-/** What taking a Hop does to an Amount, in order (see docs/domain-model.md, "Evaluating a Leg"). */
-function steps({ from, to, via }: Hop): readonly Step[] {
-  if (!via) {
-    return [
-      { kind: "convert", platform: from.platform, source: from.currency, target: to.currency },
-    ];
-  }
-  const all: Step[] = [
-    {
-      kind: "fee",
-      platform: from.platform,
-      on: { kind: "outpoint", currency: from.currency, endpoint: via },
-    },
-    { kind: "convert", platform: from.platform, source: from.currency, target: via.currency },
-    {
-      kind: "fee",
-      platform: to.platform,
-      on: { kind: "inpoint", currency: to.currency, endpoint: via },
-    },
-    { kind: "convert", platform: to.platform, source: via.currency, target: to.currency },
-  ];
-  return all.filter((s) => s.kind === "fee" || s.source !== s.target);
+/** A Hop with every Market Data value it needs, in the order they apply. */
+export type ResolvedHop = Readonly<{ hop: Hop; steps: readonly Step[] }>;
+
+/**
+ * Looks up what taking the Hop costs (see docs/domain-model.md, "Evaluating a Leg").
+ * Undefined when any value is unknown: the search then skips the Hop.
+ */
+async function resolve({ catalog, market }: Context, hop: Hop): Promise<ResolvedHop | undefined> {
+  const { from, to, via } = hop;
+  const convert = async (
+    platform: Stop["platform"],
+    source: Currency["symbol"],
+    target: Currency["symbol"],
+  ) => {
+    const rate = await market.rate({ platform, source, target });
+    if (!rate) return undefined;
+    const scaled = Rational.of(
+      rate.rate.num * Currency.scale(Catalog.currency(catalog, target)),
+      rate.rate.den * Currency.scale(Catalog.currency(catalog, source)),
+    );
+    return { kind: "convert" as const, rate, scaled };
+  };
+  const charge = async (key: Parameters<MarketDataResolver["fee"]>[0]) => {
+    const fee = await market.fee(key);
+    return fee && { kind: "fee" as const, fee };
+  };
+
+  const pending: Promise<Step | undefined>[] = via
+    ? [
+        charge({
+          platform: from.platform,
+          on: { kind: "outpoint", currency: from.currency, endpoint: via },
+        }),
+        ...(via.currency === from.currency
+          ? []
+          : [convert(from.platform, from.currency, via.currency)]),
+        charge({
+          platform: to.platform,
+          on: { kind: "inpoint", currency: to.currency, endpoint: via },
+        }),
+        ...(via.currency === to.currency ? [] : [convert(to.platform, via.currency, to.currency)]),
+      ]
+    : [convert(from.platform, from.currency, to.currency)];
+  const steps = await Promise.all(pending);
+  return steps.every((s) => s !== undefined) ? { hop, steps } : undefined;
 }
 
-/** The Market Data a Hop needs that is missing, independent of any Amount. */
-function missing({ market }: Context, hop: Hop): readonly Unquotable[] {
-  return steps(hop).flatMap((step): Unquotable[] => {
-    switch (step.kind) {
-      case "fee":
-        return MarketData.fee(market, step.platform, step.on)
-          ? []
-          : [{ kind: "missing-fee", platform: step.platform, on: step.on }];
-      case "convert":
-        return MarketData.rate(market, step.platform, step.source, step.target)
-          ? []
-          : [
-              {
-                kind: "missing-rate",
-                platform: step.platform,
-                source: step.source,
-                target: step.target,
-              },
-            ];
-    }
-  });
-}
-
-/** Fees round up and conversions round down (ADR 0002); nothing left means the Leg cannot be taken. */
-function take(context: Context, hop: Hop, sent: Amount): Result<Leg, Unquotable> {
+/** Fees round up and Conversions round down (ADR 0002); nothing left means the Leg cannot be taken. */
+function take({ hop, steps }: ResolvedHop, sent: Amount): Result<Leg, Insufficient> {
   if (sent.currency !== hop.from.currency) {
     throw new TypeError(`Hop from ${hop.from.currency} given ${sent.currency}`);
   }
-  const fees: Amount[] = [];
+  const fees: { fee: Fee; charged: Amount }[] = [];
   const rates: ExchangeRate[] = [];
   let current = sent;
-  for (const step of steps(hop)) {
+  for (const step of steps) {
     switch (step.kind) {
       case "fee": {
-        const fee = MarketData.fee(context.market, step.platform, step.on);
-        if (!fee) return Result.err({ kind: "missing-fee", platform: step.platform, on: step.on });
-        const charged = fee.fixed + Rational.ceilMul(current.minor, fee.proportional);
-        fees.push(Amount.of(current.currency, charged));
+        const charged = step.fee.fixed + Rational.ceilMul(current.minor, step.fee.proportional);
+        fees.push({ fee: step.fee, charged: Amount.of(current.currency, charged) });
         current = Amount.of(current.currency, current.minor - charged);
         break;
       }
-      case "convert": {
-        const found = MarketData.rate(context.market, step.platform, step.source, step.target);
-        if (!found)
-          return Result.err({
-            kind: "missing-rate",
-            platform: step.platform,
-            source: step.source,
-            target: step.target,
-          });
-        const scaled = Rational.of(
-          found.rate.num * Currency.scale(Catalog.currency(context.catalog, step.target)),
-          found.rate.den * Currency.scale(Catalog.currency(context.catalog, step.source)),
-        );
-        rates.push(found);
-        current = Amount.of(step.target, Rational.floorMul(current.minor, scaled));
+      case "convert":
+        rates.push(step.rate);
+        current = Amount.of(step.rate.target, Rational.floorMul(current.minor, step.scaled));
         break;
-      }
     }
     if (current.minor <= 0n) return Result.err({ kind: "insufficient" });
   }
   return Result.ok({ hop, sent, delivered: current, fees, rates });
 }
 
-export const Hop = { derive, missing, take };
+/** Upper bound when searching for an input; beyond it the target is unreachable. */
+const SEARCH_LIMIT = 10n ** 30n;
+
+/**
+ * The smallest Amount that, taking this Hop, delivers at least `target`. Taking a Hop is
+ * monotonic in the Amount (Fees below 100%, rounding down), so a binary search finds it.
+ * Undefined when no Amount up to the search limit is enough.
+ */
+function minimumSent(resolved: ResolvedHop, target: Amount): Amount | undefined {
+  const currency = resolved.hop.from.currency;
+  const meets = (minor: bigint) => {
+    const leg = take(resolved, Amount.of(currency, minor));
+    return leg.ok && leg.value.delivered.minor >= target.minor;
+  };
+  let low = 0n;
+  let high = 1n;
+  while (!meets(high)) {
+    low = high;
+    high *= 2n;
+    if (high > SEARCH_LIMIT) return undefined;
+  }
+  while (high - low > 1n) {
+    const middle = (low + high) / 2n;
+    if (meets(middle)) high = middle;
+    else low = middle;
+  }
+  return Amount.of(currency, high);
+}
+
+export const Hop = { derive, resolve, take, minimumSent };
