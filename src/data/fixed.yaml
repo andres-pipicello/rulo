@@ -1,0 +1,83 @@
+# Fixed Market Data: values for Platforms whose Fees or Exchange Rates are declared fixed in
+# catalog.yaml. Illustrative only: these are NOT real Fees. Every Endpoint of a Platform with fixed
+# Fees needs an entry; a free one is an explicit zero.
+
+rates: []
+
+# fixed: Minor units of the charged Currency; proportional: fraction below 1
+fees:
+  - platform: deel-wallet
+    on: { kind: outpoint, currency: USD, endpoint: { connection: ach, currency: USD } }
+    fixed: "500"
+    proportional: "0"
+  - platform: deel-wallet
+    on: { kind: outpoint, currency: USD, endpoint: { connection: astropay, currency: USD } }
+    fixed: "0"
+    proportional: "0.01"
+  - platform: deel-wallet
+    on: { kind: outpoint, currency: USD, endpoint: { connection: dollarapp, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: deel-wallet
+    on: { kind: outpoint, currency: USD, endpoint: { connection: cbu, currency: ARS } }
+    fixed: "0"
+    proportional: "0.02"
+  - platform: deel-wallet
+    on: { kind: outpoint, currency: ARS, endpoint: { connection: cbu, currency: ARS } }
+    fixed: "0"
+    proportional: "0"
+
+  - platform: dollarapp
+    on: { kind: inpoint, currency: USD, endpoint: { connection: ach, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: dollarapp
+    on: { kind: inpoint, currency: USD, endpoint: { connection: dollarapp, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: dollarapp
+    on: { kind: inpoint, currency: USDC, endpoint: { connection: polygon, currency: USDT } }
+    fixed: "0"
+    proportional: "0"
+  - platform: dollarapp
+    on: { kind: inpoint, currency: USDC, endpoint: { connection: cbu, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: dollarapp
+    on: { kind: outpoint, currency: USDC, endpoint: { connection: cbu, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: dollarapp
+    on: { kind: outpoint, currency: ARS, endpoint: { connection: cbu, currency: ARS } }
+    fixed: "0"
+    proportional: "0"
+
+  - platform: astropay
+    on: { kind: inpoint, currency: USD, endpoint: { connection: ach, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: astropay
+    on: { kind: inpoint, currency: USD, endpoint: { connection: astropay, currency: USD } }
+    fixed: "0"
+    proportional: "0"
+  - platform: astropay
+    on: { kind: outpoint, currency: USD, endpoint: { connection: cbu, currency: USD } }
+    fixed: "100"
+    proportional: "0"
+  - platform: astropay
+    on: { kind: outpoint, currency: ARS, endpoint: { connection: cbu, currency: ARS } }
+    fixed: "0"
+    proportional: "0"
+  - platform: astropay # 0.1 USDT gas + withdrawal
+    on: { kind: outpoint, currency: USDT, endpoint: { connection: polygon, currency: USDT } }
+    fixed: "100000"
+    proportional: "0"
+
+  - platform: santander-ar
+    on: { kind: inpoint, currency: ARS, endpoint: { connection: cbu, currency: ARS } }
+    fixed: "0"
+    proportional: "0"
+  - platform: santander-ar
+    on: { kind: inpoint, currency: USD, endpoint: { connection: cbu, currency: USD } }
+    fixed: "0"
+    proportional: "0"

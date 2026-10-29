@@ -1,0 +1,102 @@
+# Milestone-1 Catalog. Entries marked "# assumed" are unverified against the real Platform.
+# Each Platform declares its Fees and Exchange Rates as fixed (values in fixed.yaml) or dynamic
+# (fetched from an origin). Origin names are placeholders until rate fetching exists.
+
+currencies:
+  - { symbol: USD, decimals: 2 }
+  - { symbol: ARS, decimals: 2 }
+  - { symbol: USDT, decimals: 6 }
+  - { symbol: USDC, decimals: 6 }
+
+connections:
+  - { id: ach, currencies: [USD] }
+  - { id: cbu, currencies: [ARS, USD] }
+  - { id: polygon, currencies: [USDT] }
+  - { id: astropay, currencies: [USD] }
+  - { id: dollarapp, currencies: [USD] }
+
+platforms:
+  - id: deel-wallet
+    name: Deel Wallet
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: deel-wallet }
+    currencies:
+      - currency: USD
+        inpoints: []
+        outpoints:
+          - { connection: ach, currency: USD }
+          - { connection: astropay, currency: USD }
+          - { connection: dollarapp, currency: USD }
+          - { connection: cbu, currency: ARS } # converts: USD debited, ARS delivered
+      - currency: ARS # assumed
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+    exchangePairs:
+      - { source: USD, target: ARS } # assumed
+
+  - id: dollarapp
+    name: DollarApp
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: dollarapp }
+    currencies:
+      - currency: USD
+        inpoints:
+          - { connection: ach, currency: USD }
+          - { connection: dollarapp, currency: USD }
+        outpoints: []
+      - currency: USDC
+        inpoints:
+          - { connection: polygon, currency: USDT } # converts: USDT arrives, USDC credited
+          - { connection: cbu, currency: USD } # converts: USD from a USD CBU account
+        outpoints:
+          - { connection: cbu, currency: USD } # converts: USD to a USD CBU account
+      - currency: ARS
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+    exchangePairs:
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
+
+  - id: astropay
+    name: AstroPay
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: astropay }
+    currencies:
+      - currency: USD
+        inpoints:
+          - { connection: ach, currency: USD }
+          - { connection: astropay, currency: USD }
+        outpoints:
+          - { connection: cbu, currency: USD }
+      - currency: ARS
+        inpoints: []
+        outpoints:
+          - { connection: cbu, currency: ARS }
+      - currency: USDT
+        inpoints: []
+        outpoints:
+          - { connection: polygon, currency: USDT }
+    exchangePairs:
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
+      - { source: USD, target: USDT }
+      - { source: USDT, target: USD }
+
+  - id: santander-ar
+    name: Santander Argentina
+    fees: { kind: fixed }
+    rates: { kind: dynamic, origin: santander-ar }
+    currencies:
+      - currency: ARS
+        inpoints:
+          - { connection: cbu, currency: ARS }
+        outpoints: []
+      - currency: USD # assumed
+        inpoints:
+          - { connection: cbu, currency: USD }
+        outpoints: []
+    exchangePairs: # assumed
+      - { source: USD, target: ARS }
+      - { source: ARS, target: USD }
