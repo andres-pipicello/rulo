@@ -6,23 +6,27 @@ import type { Context, Leg, ResolvedHop } from "./hop";
 import { Hop } from "./hop";
 import type { MarketDataResolver } from "./market-data";
 import { Result } from "./result";
-import type { SearchUniverse } from "./stop";
+import type { Prerequisites, SearchUniverse } from "./stop";
 import { SearchUniverse as Universe, Stop } from "./stop";
 
 /** An ordered sequence of Hops from a starting Stop to a destination Stop. */
 export type Route = readonly Hop[];
 
-/** A Route taken at a moment with one side fixed: its Legs and both Amounts. */
-export type Quote = Readonly<{
-  route: Route;
-  legs: readonly Leg[];
-  sent: Amount;
-  delivered: Amount;
-  /** The oldest fetch among the values used; undefined when all were fixed. */
-  oldestFetchedAt: Temporal.Instant | undefined;
-  /** Only possible when Exchange Rates contradict each other across Platforms. */
-  repeatsStop: boolean;
-}>;
+/**
+ * A Route taken at a moment with one side fixed: its Legs, both Amounts, and the Accounts to open
+ * and Currencies to enable that its prospective Stops need.
+ */
+export type Quote = Prerequisites &
+  Readonly<{
+    route: Route;
+    legs: readonly Leg[];
+    sent: Amount;
+    delivered: Amount;
+    /** The oldest fetch among the values used; undefined when all were seeded. */
+    oldestFetchedAt: Temporal.Instant | undefined;
+    /** Only possible when Exchange Rates contradict each other across Platforms. */
+    repeatsStop: boolean;
+  }>;
 
 /** Which side of the Quote the user fixes. */
 export type Fixed = Readonly<{ side: "sent" | "delivered"; amount: Amount }>;
@@ -119,17 +123,16 @@ async function along(context: Context, route: Route, sent: Amount): Promise<Quot
   const fetchedAt = legs
     .flatMap((leg) => [...leg.rates, ...leg.fees.map((f) => f.fee)])
     .flatMap(({ provenance: p }) => (p.kind === "fetched" ? [p.fetchedAt] : []));
-  const stops = [
-    ...route.map((h) => Stop.key(h.from)),
-    ...route.slice(-1).map((h) => Stop.key(h.to)),
-  ];
+  const stops = [...route.map((h) => h.from), ...route.slice(-1).map((h) => h.to)];
+  const keys = stops.map(Stop.key);
   return {
+    ...Stop.prerequisites(stops),
     route,
     legs,
     sent,
     delivered: current,
     oldestFetchedAt: fetchedAt.sort((a, b) => Temporal.Instant.compare(a, b))[0],
-    repeatsStop: new Set(stops).size < stops.length,
+    repeatsStop: new Set(keys).size < keys.length,
   };
 }
 

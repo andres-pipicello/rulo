@@ -42,11 +42,8 @@ function derive(catalog: Catalog, universe: SearchUniverse): readonly Hop[] {
         );
         if (accepts) hops.push({ from, to, via });
       }
-      const differentAccounts =
-        from.kind === "held" && to.kind === "held" && from.account !== to.account;
       const withinAccount =
-        from.platform === to.platform &&
-        !differentAccounts &&
+        Stop.sameAccount(from, to) &&
         Catalog.platform(catalog, from.platform).exchangePairs.some(
           (p) => p.source === from.currency && p.target === to.currency,
         );
@@ -118,7 +115,7 @@ function take({ hop, steps }: ResolvedHop, sent: Amount): Result<Leg, Insufficie
   for (const step of steps) {
     switch (step.kind) {
       case "fee": {
-        const charged = step.fee.fixed + Rational.ceilMul(current.minor, step.fee.proportional);
+        const charged = step.fee.flat + Rational.ceilMul(current.minor, step.fee.proportional);
         fees.push({ fee: step.fee, charged: Amount.of(current.currency, charged) });
         current = Amount.of(current.currency, current.minor - charged);
         break;

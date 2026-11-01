@@ -29,8 +29,8 @@ const platform = (id: string, inpoints: string[], outpoints: string[]) => ({
     { source: "USD", target: "BTC" },
     { source: "BTC", target: "USD" },
   ],
-  fees: { kind: "fixed" } as const,
-  rates: { kind: "dynamic", origin: "test" } as const,
+  fees: { kind: "seeded" } as const,
+  rates: { kind: "fetched", origin: "test" } as const,
 });
 
 // a → c directly over "direct", or a → b → c over "x" then "y"; every Fee free.
@@ -49,7 +49,7 @@ const catalog = Catalog.schema.parse({
 
 const freeFees: readonly Fee[] = MarketData.neededFees(catalog).map((key) => ({
   ...key,
-  fixed: 0n,
+  flat: 0n,
   proportional: Rational.zero,
   provenance,
 }));

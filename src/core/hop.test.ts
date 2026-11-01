@@ -39,8 +39,8 @@ const catalog = Catalog.schema.parse({
         { source: "USD", target: "BTC" },
         { source: "BTC", target: "USD" },
       ],
-      fees: { kind: "fixed" },
-      rates: { kind: "dynamic", origin: "test" },
+      fees: { kind: "seeded" },
+      rates: { kind: "fetched", origin: "test" },
     },
     {
       id: "bank",
@@ -54,8 +54,8 @@ const catalog = Catalog.schema.parse({
         { currency: "USD", inpoints: [], outpoints: [] },
       ],
       exchangePairs: [{ source: "ARS", target: "USD" }],
-      fees: { kind: "fixed" },
-      rates: { kind: "dynamic", origin: "test" },
+      fees: { kind: "seeded" },
+      rates: { kind: "fetched", origin: "test" },
     },
   ],
 } satisfies z.input<typeof Catalog.schema>);
@@ -78,8 +78,10 @@ const contextAt = (price: bigint) => ({
   }),
 });
 
-const prospective = (platform: PlatformId, currency: CurrencyCode): Stop => ({
+/** A prospective Balance of `account`, or of the Platform's Prospective Account when omitted. */
+const prospective = (platform: PlatformId, currency: CurrencyCode, account?: string): Stop => ({
   kind: "prospective",
+  account: account === undefined ? null : AccountId.parse(account),
   platform,
   currency,
 });
@@ -109,14 +111,19 @@ describe("Hop.derive", () => {
     ]);
   });
 
-  test("Hops without a Connection stay within one Account, or reach a prospective Stop", () => {
+  test("Hops without a Connection stay within one Account, real or prospective", () => {
     const personalArs = held("personal", bank, ARS);
+    const personalUsd = prospective(bank, USD, "personal");
     const jointUsd = held("joint", bank, USD);
+    const newArs = prospective(bank, ARS);
     const newUsd = prospective(bank, USD);
     const within = (universe: readonly Stop[]) =>
       Hops.derive(catalog, universe).filter((h) => h.via === null);
-    expect(within([personalArs, jointUsd])).toEqual([]);
-    expect(within([personalArs, newUsd])).toEqual([{ from: personalArs, to: newUsd, via: null }]);
+    expect(within([personalArs, personalUsd])).toEqual([
+      { from: personalArs, to: personalUsd, via: null },
+    ]);
+    expect(within([personalArs, jointUsd, newUsd])).toEqual([]);
+    expect(within([newArs, newUsd])).toEqual([{ from: newArs, to: newUsd, via: null }]);
   });
 
   test("only Stops in the Search Universe are connected", () => {

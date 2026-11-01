@@ -15,14 +15,14 @@ import { Rational } from "@/core/rational";
 import type { Stop } from "@/core/stop";
 import { SearchUniverse } from "@/core/stop";
 
-import { catalog, fixedMarketData, rawCatalog, rawFixed } from ".";
+import { catalog, seededMarketData, rawCatalog, rawSeeded } from ".";
 
 const seedCatalog = rawCatalog as z.input<typeof Catalog.schema>;
-const seedFixed = rawFixed as z.input<typeof MarketData.fixedSchema>;
+const seedMarket = rawSeeded as z.input<typeof MarketData.seededSchema>;
 
 describe("seed data", () => {
-  test("every fixed Platform lists every value it needs, and only those", () => {
-    expect(MarketData.problems(catalog, fixedMarketData)).toEqual([]);
+  test("every seeded Platform lists every value it needs, and only those", () => {
+    expect(MarketData.problems(catalog, seededMarketData)).toEqual([]);
   });
 
   test("rejects an Outpoint over an unknown Connection", () => {
@@ -33,25 +33,25 @@ describe("seed data", () => {
         { currency: "USD", inpoints: [], outpoints: [{ connection: "swift", currency: "USD" }] },
       ],
       exchangePairs: [],
-      fees: { kind: "fixed" },
-      rates: { kind: "fixed" },
+      fees: { kind: "seeded" },
+      rates: { kind: "seeded" },
     };
     const broken = { ...seedCatalog, platforms: [...seedCatalog.platforms, rogue] };
     expect(Catalog.schema.safeParse(broken).success).toBe(false);
   });
 
   test("rejects two Fees on the same Outpoint", () => {
-    const [fee] = seedFixed.fees;
+    const [fee] = seedMarket.fees;
     expect(
-      MarketData.fixedSchema.safeParse({ ...seedFixed, fees: [...seedFixed.fees, fee] }).success,
+      MarketData.seededSchema.safeParse({ ...seedMarket, fees: [...seedMarket.fees, fee] }).success,
     ).toBe(false);
   });
 
   test("rejects a negative Fee", () => {
-    const [fee] = seedFixed.fees;
+    const [fee] = seedMarket.fees;
     if (!fee) throw new Error("seed has no fees");
-    const negative = { ...fee, fixed: "-1" };
-    expect(MarketData.fixedSchema.safeParse({ rates: [], fees: [negative] }).success).toBe(false);
+    const negative = { ...fee, flat: "-1" };
+    expect(MarketData.seededSchema.safeParse({ rates: [], fees: [negative] }).success).toBe(false);
   });
 
   test("rejects a Balance in a Currency the Platform does not offer", () => {
@@ -91,7 +91,7 @@ const scenarioRates: readonly ExchangeRate[] = (
   };
 });
 
-const market = MarketData.inMemory({ rates: scenarioRates, fees: fixedMarketData.fees });
+const market = MarketData.inMemory({ rates: scenarioRates, fees: seededMarketData.fees });
 
 // A freelancer paid through Deel, banking with Santander.
 const accounts = Account.listSchema(catalog).parse([
@@ -106,7 +106,7 @@ function best(universe: SearchUniverse, fixed: Fixed, maxHops = 4) {
   return Quote.best(catalog, market, { from: deel, to: santander, universe, fixed, maxHops });
 }
 
-// Expected values are worked by hand from the scenario rates and the seed's fixed Fees.
+// Expected values are worked by hand from the scenario rates and the Seed's Fees.
 describe("Quote.best: paid through Deel, banking with Santander", () => {
   const thousandDollars: Fixed = { side: "sent", amount: Amount.of(USD, 100_000n) };
 
@@ -125,6 +125,8 @@ describe("Quote.best: paid through Deel, banking with Santander", () => {
       quote.value.route.map((h) => `${h.via?.connection ?? "within"} ${h.to.platform}`),
     ).toEqual(["dollarapp dollarapp", "within dollarapp", "cbu santander-ar"]);
     expect(quote.value.route.map((h) => h.to.kind)).toEqual(["prospective", "prospective", "held"]);
+    expect(quote.value.accountsToOpen).toEqual(["dollarapp"]);
+    expect(quote.value.currenciesToEnable).toEqual([]);
     expect(quote.value.repeatsStop).toBe(false);
     expect(quote.value.oldestFetchedAt).toEqual(fetchedAt);
   });
@@ -162,7 +164,7 @@ describe("Quote.best: paid through Deel, banking with Santander", () => {
   });
 
   test("Exchange Rates never fetched leave no Quote", async () => {
-    const unfetched = MarketData.inMemory(fixedMarketData);
+    const unfetched = MarketData.inMemory(seededMarketData);
     const quote = await Quote.best(catalog, unfetched, {
       from: deel,
       to: santander,
@@ -175,8 +177,13 @@ describe("Quote.best: paid through Deel, banking with Santander", () => {
 
   test("maxHops limits Route length", async () => {
     const quote = await best(SearchUniverse.everything(catalog, accounts), thousandDollars, 2);
+    if (!quote.ok) throw new Error(quote.error.kind);
     // Deel USD → Deel ARS (× 1150) → CBU to Santander
-    expect(quote.ok && quote.value.delivered).toEqual(Amount.of(ARS, 115_000_000n));
+    expect(quote.value.delivered).toEqual(Amount.of(ARS, 115_000_000n));
+    expect(quote.value.accountsToOpen).toEqual([]);
+    expect(quote.value.currenciesToEnable).toEqual([
+      { account: "my-deel", platform: "deel-wallet", currency: ARS },
+    ]);
   });
 });
 

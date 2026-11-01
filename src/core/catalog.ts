@@ -36,10 +36,10 @@ export const OfferedCurrency = z
   .readonly();
 export type OfferedCurrency = z.infer<typeof OfferedCurrency>;
 
-/** Where a Platform's Fees or Exchange Rates come from: listed in the seed, or fetched from an origin. */
+/** Where a Platform's Fees or Exchange Rates come from: listed in the Seed, or fetched from an origin. */
 export const MarketDataSource = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("fixed") }).readonly(),
-  z.object({ kind: z.literal("dynamic"), origin: z.string().min(1) }).readonly(),
+  z.object({ kind: z.literal("seeded") }).readonly(),
+  z.object({ kind: z.literal("fetched"), origin: z.string().min(1) }).readonly(),
 ]);
 export type MarketDataSource = z.infer<typeof MarketDataSource>;
 
@@ -55,7 +55,7 @@ export const Platform = z
   .readonly();
 export type Platform = z.infer<typeof Platform>;
 
-/** A Currency as held on a specific Platform. */
+/** A Currency as offered by a specific Platform. */
 export type PlatformCurrency = Readonly<{ platform: PlatformId; currency: CurrencyCode }>;
 
 function duplicates(values: readonly string[]): string[] {

@@ -9,7 +9,7 @@ import { Rational } from "./rational";
 
 /** Where a value came from. For debugging and for showing how recent a Quote's data is. */
 export type Provenance =
-  | Readonly<{ kind: "fixed" }>
+  | Readonly<{ kind: "seeded" }>
   | Readonly<{ kind: "fetched"; origin: string; fetchedAt: Temporal.Instant }>;
 
 export type RateKey = Readonly<{
@@ -38,8 +38,8 @@ const RateValues = z.object({
 const FeeValues = z.object({
   platform: PlatformId,
   on: FeeTarget,
-  /** Minor units of the Currency being charged. */
-  fixed: MinorUnits.refine((minor) => minor >= 0n, "Fixed fee must not be negative"),
+  /** Minor Units of the Currency being charged. */
+  flat: MinorUnits.refine((minor) => minor >= 0n, "Flat fee must not be negative"),
   /** Below 1, so a larger Amount never delivers less. */
   proportional: Rational.schema.refine((r) => r.num < r.den, "Proportional fee must be below 1"),
 });
@@ -61,8 +61,8 @@ export type MarketDataValues = Readonly<{
   fees: readonly Fee[];
 }>;
 
-/** The fixed values listed in the seed; parsing marks them as fixed. */
-const fixedSchema = z
+/** The values listed in the Seed; parsing marks them as seeded. */
+const seededSchema = z
   .object({ rates: z.array(RateValues), fees: z.array(FeeValues) })
   .superRefine((values, ctx) => {
     const issue = (message: string) => {
@@ -78,13 +78,13 @@ const fixedSchema = z
     }
   })
   .transform((values): MarketDataValues => ({
-    rates: values.rates.map((r) => ({ ...r, provenance: { kind: "fixed" } })),
-    fees: values.fees.map((f) => ({ ...f, provenance: { kind: "fixed" } })),
+    rates: values.rates.map((r) => ({ ...r, provenance: { kind: "seeded" } })),
+    fees: values.fees.map((f) => ({ ...f, provenance: { kind: "seeded" } })),
   }));
 
 /**
  * Answers the search's questions about Market Data, on demand. Resolves to undefined when a value
- * is unknown (a dynamic value never fetched), in which case the Hop needing it is skipped.
+ * is unknown (never fetched), in which case the Hop needing it is skipped.
  */
 export type MarketDataResolver = Readonly<{
   rate: (key: RateKey) => Promise<ExchangeRate | undefined>;
@@ -134,29 +134,29 @@ function neededRates(catalog: Catalog): readonly RateKey[] {
 }
 
 /**
- * Mismatches between the Catalog's fixed/dynamic declarations and the fixed values: a fixed
- * Platform missing a value it needs, or a value listed for a Platform declared dynamic.
+ * Mismatches between the Catalog's seeded/fetched declarations and the seeded values: a seeded
+ * Platform missing a value it needs, or a value listed for a Platform whose values are fetched.
  * Should always be empty.
  */
-function problems(catalog: Catalog, fixed: MarketDataValues): readonly string[] {
+function problems(catalog: Catalog, seeded: MarketDataValues): readonly string[] {
   const declared = (platform: PlatformId, of: "fees" | "rates") =>
     catalog.platforms.find((p) => p.id === platform)?.[of].kind;
-  const rates = new Set(fixed.rates.map(rateKey));
-  const fees = new Set(fixed.fees.map(feeKey));
+  const rates = new Set(seeded.rates.map(rateKey));
+  const fees = new Set(seeded.fees.map(feeKey));
   return [
     ...neededRates(catalog)
-      .filter((k) => declared(k.platform, "rates") === "fixed" && !rates.has(rateKey(k)))
-      .map((k) => `Missing fixed rate ${rateKey(k)}`),
+      .filter((k) => declared(k.platform, "rates") === "seeded" && !rates.has(rateKey(k)))
+      .map((k) => `Missing seeded rate ${rateKey(k)}`),
     ...neededFees(catalog)
-      .filter((k) => declared(k.platform, "fees") === "fixed" && !fees.has(feeKey(k)))
-      .map((k) => `Missing fixed fee ${feeKey(k)}`),
-    ...fixed.rates
-      .filter((r) => declared(r.platform, "rates") !== "fixed")
-      .map((r) => `Rate ${rateKey(r)} listed for a Platform whose rates are not fixed`),
-    ...fixed.fees
-      .filter((f) => declared(f.platform, "fees") !== "fixed")
-      .map((f) => `Fee ${feeKey(f)} listed for a Platform whose fees are not fixed`),
+      .filter((k) => declared(k.platform, "fees") === "seeded" && !fees.has(feeKey(k)))
+      .map((k) => `Missing seeded fee ${feeKey(k)}`),
+    ...seeded.rates
+      .filter((r) => declared(r.platform, "rates") !== "seeded")
+      .map((r) => `Rate ${rateKey(r)} listed for a Platform whose rates are not seeded`),
+    ...seeded.fees
+      .filter((f) => declared(f.platform, "fees") !== "seeded")
+      .map((f) => `Fee ${feeKey(f)} listed for a Platform whose fees are not seeded`),
   ];
 }
 
-export const MarketData = { fixedSchema, inMemory, neededFees, neededRates, problems };
+export const MarketData = { seededSchema, inMemory, neededFees, neededRates, problems };
