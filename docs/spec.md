@@ -22,6 +22,9 @@ Features that are vague and high level. They require further breakdown into Feat
 - The user should be able to specify source and destination Platforms and Currencies. For example, send USD in Deel to a Santander Account in ARS
 - Move money from several Balances at once, splitting the Amount across Routes
 - Hop limits (minimum/maximum Amounts) and durations (instant vs days), possibly as a ranking factor
+- Conditional Fees (tiers, monthly free quotas)
+- Rewards. For example, AstroPay pays 1% of money arriving from Deel, up to USD 60 per calendar month: conditional, capped and periodic, so they break "nothing creates money" (ADR 0002)
+- More crypto in the Seed beyond USDT on Polygon and USDC (supporting it needs no new concepts)
 - Graph views are very navigable (e.g. zoom/pan, focus a node and its neighbours, highlight a chosen Route, filter by Currency, auto-layout). To be refined before the UI milestone
 
 ## Features

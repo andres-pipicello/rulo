@@ -1,6 +1,9 @@
 # Milestone-1 Catalog. Entries marked "# assumed" are unverified against the real Platform.
 # Each Platform declares its Fees and Exchange Rates as seeded (values in seeded.yaml) or fetched
 # (from an origin). Origin names are placeholders until rate fetching exists.
+# An Endpoint whose Currency differs from its Platform Currency converts at the Platform's own
+# Exchange Rate: it needs that rate, not an Exchange Pair, and does not let the user hold the
+# carried Currency there.
 
 currencies:
   - { symbol: USD, decimals: 2 }

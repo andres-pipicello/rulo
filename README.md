@@ -7,7 +7,6 @@ It shows and calculates the best routes to move money between different cryptocu
 
 - [Specification](docs/spec.md)
 - [Glossary](GLOSSARY.md)
-- [Domain model (draft)](docs/domain-model.md)
 - [Decisions](docs/adr/)
 
 # Development

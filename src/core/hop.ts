@@ -61,8 +61,12 @@ type Step =
 export type ResolvedHop = Readonly<{ hop: Hop; steps: readonly Step[] }>;
 
 /**
- * Looks up what taking the Hop costs (see docs/domain-model.md, "Evaluating a Leg").
- * Undefined when any value is unknown: the search then skips the Hop.
+ * Looks up what taking the Hop costs. Through a Connection, in order: the Outpoint Fee in A's
+ * Currency, a Conversion at A's Platform if the Outpoint carries another Currency, the Inpoint Fee
+ * in the carried Currency, a Conversion at B's Platform if B holds another Currency. So a Fee is
+ * always charged before its Endpoint's Conversion; revisit if a Platform charges otherwise (Deel's
+ * CBU Fee may be in ARS). Within an Account: one Conversion. Undefined when any value is unknown:
+ * the search then skips the Hop.
  */
 async function resolve({ catalog, market }: Context, hop: Hop): Promise<ResolvedHop | undefined> {
   const { from, to, via } = hop;

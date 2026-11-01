@@ -28,7 +28,7 @@ export type Quote = Prerequisites &
     repeatsStop: boolean;
   }>;
 
-/** Which side of the Quote the user fixes. */
+/** Which side of the Quote the user fixes. A fixed Sent Amount is not capped by the starting Balance. */
 export type Fixed = Readonly<{ side: "sent" | "delivered"; amount: Amount }>;
 
 export type QuoteQuery = Readonly<{
@@ -65,7 +65,9 @@ function resolver(context: Context): (hop: Hop) => Promise<ResolvedHop | undefin
 /**
  * Hop-bounded best-Amount search. Each round extends only the Stops improved in the previous
  * round; a label is replaced only by a strictly better one, so ties keep the Route with fewer
- * Hops. Sound because taking a Hop is monotonic in the Amount.
+ * Hops. Sound because taking a Hop is monotonic in the Amount. Rounding and Fees only lose value,
+ * so revisiting a Stop pays off only when Exchange Rates contradict each other across Platforms;
+ * `maxHops` ends the search even then.
  *
  * `forward`: labels hold the most money that can reach each Stop.
  * `backward`: labels hold the least money each Stop needs to reach the destination.
